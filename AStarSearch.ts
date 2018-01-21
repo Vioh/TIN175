@@ -35,39 +35,79 @@ export function aStarSearch<Node> (
     heuristics : (n:Node) => number,
     timeout : number
 ) : SearchResult<Node> {
-    
-    // A dummy search implementation: it returns a random walk
-    var cost = 0;
-    var path : Successor<Node>[] = [];
-    var currentnode : Node = start;
-    var visited : Set<Node> = new Set();
-    visited.add(currentnode);
 
-    var endTime = Date.now() + timeout * 1000;
-    while (Date.now() < endTime) {
-        if (goal(currentnode)) {
-            // We found a path to the goal!
-            return new SearchResult<Node>('success', path, cost, visited.size());
-        }
-        var successors : Successor<Node>[] = graph.successors(currentnode);
-        var next : Successor<Node> | null = null;
-        while (!next && successors.length > 0) {
-            var n = Math.floor(Math.random() * successors.length);
-            if (visited.contains(successors[n].child)) {
-                successors.splice(n, 1);
-            } else {
-                next = successors[n];
-            }
-        }
-        if (!next) {
-            // We reached a dead end, but we return the path anyway
-            return new SearchResult<Node>('success', path, cost, visited.size());
-        }
-        path.push(next);
-        currentnode = next.child;
-        visited.add(currentnode);
-        cost += next.cost;
+    // Define a class to represent a search node
+    class SearchNode {
+        constructor(
+            public edge       : Successor<Node>,
+            public parentNode : SearchNode,
+            public totalcost  : number, // total cost from start node
+            public astarcost  : number, // total cost plus heuristics cost
+        ) {};
     }
-    return new SearchResult<Node>('timeout', [], -1, visited.size());
+    // Define a compare function
+    var compare : (a: SearchNode, b: SearchNode) => number;
+    compare = function(a: SearchNode, b: SearchNode) : number {
+        if(a.astarcost < b.astarcost) return -1;
+        if(a.astarcost > b.astarcost) return 1;
+        return 0;
+    }
+    // Define function to compute the path
+    function computePath(end : SearchNode) : Successor<Node>[] {
+        var path : Successor<Node>[] = [];
+        var currentNode  : SearchNode = end;
+        while(currentNode.edge) {
+            path.push(currentNode.edge);
+            currentNode = currentNode.parentNode;
+        }
+        return path.reverse();
+    }
+    // Define neccessary variables
+    var endTime = Date.now() + timeout * 1000;
+    var visited : Set<Node> = new Set();
+    var frontier : PriorityQueue<SearchNode> = new PriorityQueue<SearchNode>(compare);
+    frontier.enqueue(new SearchNode(undefined, undefined, 0, undefined));
+    visited.add(start);
+
+    while(Date.now() < endTime) {
+        var currentNode : SearchNode = frontier.dequeue();
+        if(goal(currentNode.edge.child))
+    }
+    
+
+    
+    // // A dummy search implementation: it returns a random walk
+    // var cost = 0;
+    // var path : Successor<Node>[] = [];
+    // currentNode = start;
+    // var visited : Set<Node> = new Set();
+    // visited.add(currentNode);
+
+    // var endTime = Date.now() + timeout * 1000;
+    // while (Date.now() < endTime) {
+    //     if (goal(currentNode)) {
+    //         // We found a path to the goal!
+    //         return new SearchResult<Node>('success', path, cost, visited.size());
+    //     }
+    //     var successors : Successor<Node>[] = graph.successors(currentNode);
+    //     var next : Successor<Node> | null = null;
+    //     while (!next && successors.length > 0) {
+    //         var n = Math.floor(Math.random() * successors.length);
+    //         if (visited.contains(successors[n].child)) {
+    //             successors.splice(n, 1);
+    //         } else {
+    //             next = successors[n];
+    //         }
+    //     }
+    //     if (!next) {
+    //         // We reached a dead end, but we return the path anyway
+    //         return new SearchResult<Node>('success', path, cost, visited.size());
+    //     }
+    //     path.push(next);
+    //     currentNode = next.child;
+    //     visited.add(currentNode);
+    //     cost += next.cost;
+    // }
+    // return new SearchResult<Node>('timeout', [], -1, visited.size());
 }
 
