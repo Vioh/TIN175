@@ -39,75 +39,62 @@ export function aStarSearch<Node> (
     // Define a class to represent a search node
     class SearchNode {
         constructor(
-            public edge       : Successor<Node>,
-            public parentNode : SearchNode,
-            public totalcost  : number, // total cost from start node
-            public astarcost  : number, // total cost plus heuristics cost
+            public parentNode : SearchNode | undefined, // undefined if parent is start node
+            public nextEdge   : Successor<Node>,        // edge incident to the parent
+            public totalcost  : number,                 // total cost from start node
+            public astarcost  : number,                 // total cost plus heuristics cost
         ) {};
     }
     // Define a compare function
     var compare : (a: SearchNode, b: SearchNode) => number;
     compare = function(a: SearchNode, b: SearchNode) : number {
-        if(a.astarcost < b.astarcost) return -1;
-        if(a.astarcost > b.astarcost) return 1;
+        if(a.astarcost > b.astarcost) return -1;
+        if(a.astarcost < b.astarcost) return 1;
         return 0;
     }
     // Define function to compute the path
-    function computePath(end : SearchNode) : Successor<Node>[] {
-        var path : Successor<Node>[] = [];
-        var currentNode  : SearchNode = end;
-        while(currentNode.edge) {
-            path.push(currentNode.edge);
-            currentNode = currentNode.parentNode;
+    function path(endNode : SearchNode) : Successor<Node>[] {
+        var p : Successor<Node>[] = [];
+        var curNode : SearchNode = endNode;
+        while(curNode.parentNode) {
+            p.push(curNode.nextEdge);
+            curNode = curNode.parentNode;
         }
-        return path.reverse();
+        return p.reverse();
     }
-    // Define neccessary variables
+    // Start the timer, define the frontier and the visited set
     var endTime = Date.now() + timeout * 1000;
     var visited : Set<Node> = new Set();
     var frontier : PriorityQueue<SearchNode> = new PriorityQueue<SearchNode>(compare);
-    frontier.enqueue(new SearchNode(undefined, undefined, 0, undefined));
+    
+    // Initialize the search with the start node
     visited.add(start);
-
-    while(Date.now() < endTime) {
-        var currentNode : SearchNode = frontier.dequeue();
-        if(goal(currentNode.edge.child))
+    if(goal(start))
+        return new SearchResult<Node>('success', [], 0, visited.size());
+    var successors : Successor<Node>[] = graph.successors(start);
+    for(var edge of successors) {
+        if(Date.now() >= endTime) break;
+        visited.add(edge.child);
+        var astarcost : number = edge.cost + heuristics(edge.child);
+        frontier.enqueue(new SearchNode(undefined, edge, edge.cost, astarcost));
     }
-    
-
-    
-    // // A dummy search implementation: it returns a random walk
-    // var cost = 0;
-    // var path : Successor<Node>[] = [];
-    // currentNode = start;
-    // var visited : Set<Node> = new Set();
-    // visited.add(currentNode);
-
-    // var endTime = Date.now() + timeout * 1000;
-    // while (Date.now() < endTime) {
-    //     if (goal(currentNode)) {
-    //         // We found a path to the goal!
-    //         return new SearchResult<Node>('success', path, cost, visited.size());
-    //     }
-    //     var successors : Successor<Node>[] = graph.successors(currentNode);
-    //     var next : Successor<Node> | null = null;
-    //     while (!next && successors.length > 0) {
-    //         var n = Math.floor(Math.random() * successors.length);
-    //         if (visited.contains(successors[n].child)) {
-    //             successors.splice(n, 1);
-    //         } else {
-    //             next = successors[n];
-    //         }
-    //     }
-    //     if (!next) {
-    //         // We reached a dead end, but we return the path anyway
-    //         return new SearchResult<Node>('success', path, cost, visited.size());
-    //     }
-    //     path.push(next);
-    //     currentNode = next.child;
-    //     visited.add(currentNode);
-    //     cost += next.cost;
-    // }
-    // return new SearchResult<Node>('timeout', [], -1, visited.size());
+    // Searching begins here
+    while(Date.now() < endTime) {
+        var searchNode : SearchNode | undefined = frontier.dequeue();
+        if(!searchNode) {
+            return new SearchResult<Node>('failure', [], -1, visited.size());
+        }
+        var graphNode : Node = searchNode.nextEdge.child;
+        if(goal(graphNode)) {
+            return new SearchResult<Node>('success', path(searchNode), searchNode.totalcost, visited.size());
+        }
+        var successors : Successor<Node>[] = graph.successors(graphNode);
+        for(var edge of successors) {
+            visited.add(edge.child);
+            var totalcost : number = searchNode.totalcost + edge.cost;
+            var astarcost : number = totalcost + heuristics(edge.child);
+            frontier.enqueue(new SearchNode(searchNode, edge, totalcost, astarcost));
+        }
+    }
+    return new SearchResult<Node>('timeout', [], -1, visited.size());
 }
-
