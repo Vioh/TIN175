@@ -1,17 +1,32 @@
-/********************************************************************************
-This module contains A* search implementation, parameterised by a 'Node' type.
-@param graph: The graph on which to perform A* search.
-@param start: The initial node.
-@param goal: Function that returns true if the algorithm has reached the goal.
-@param heuristics: Function that estimates the heuristics cost of reaching the goal from a given Node.
-@param timeout: Maximum time (in seconds) to spend performing A* search.
-@returns: Returns a search result [path from start to goal, total cost, and some statistics].
-********************************************************************************/
 
 import {Successor, Graph, SearchResult} from "./Graph";
+
+// You might want to use one of these:
 import Set from "./lib/typescript-collections/src/lib/Set";
 import Dictionary from "./lib/typescript-collections/src/lib/Dictionary";
 import PriorityQueue from "./lib/typescript-collections/src/lib/PriorityQueue";
+
+/********************************************************************************
+** AStarSearch
+
+This module contains an implementation of the A* algorithm.
+You should change the function 'aStarSearch'. 
+********************************************************************************/
+
+/* A* search implementation, parameterised by a 'Node' type. 
+ * The code here is just a template; you should rewrite this function entirely.
+ * This template produces a dummy search result which is a random walk.
+ *
+ * Note that you should not change the API (type) of this function, only its body.
+ *
+ * @param graph: The graph on which to perform A* search.
+ * @param start: The initial node.
+ * @param goal: A function that returns true when given a goal node. Used to determine if the algorithm has reached the goal.
+ * @param heuristics: The heuristic function. Used to estimate the cost of reaching the goal from a given Node.
+ * @param timeout: Maximum time (in seconds) to spend performing A* search.
+ * @returns: A search result, which contains the path from 'start' to a node satisfying 'goal', 
+ *           the cost of this path, and some statistics.
+ */
 
 export function aStarSearch<Node> (
     graph : Graph<Node>,
@@ -23,67 +38,80 @@ export function aStarSearch<Node> (
 
     // Define a class to represent a search node
     class SearchNode {
-        constructor( 
-            // undefined values are used only for the first search node (i.e. the start).
-            public parent    : SearchNode      | undefined, // parent search node
-            public edge      : Successor<Node> | undefined, // edge.child is the graph node
-            public totalcost : number,                      // total cost from start node
-            public astarcost : number,                      // total cost plus heuristics cost
-        ) {};
+        public parentNode: SearchNode | undefined;
+        public graphNode: Successor<Node> | undefined;
+        public totalCost: number;
+        public astarcost: number;
+        constructor(parent: SearchNode, node: Successor<Node>, cost: number) {
+            this.parentNode = parent;
+            this.graphNode = node;
+            this.totalCost = cost;
+            this.astarcost = (this.graphNode) ? this.totalCost + heuristics(this.graphNode.child) : heuristics(start);
+        }
     }
-    // Function to compare 2 searchnodes (a < b if a has higher cost than b).
-    function compare(a : SearchNode, b : SearchNode) : number {
+    // Define a compare function
+    var compare : (a: SearchNode, b: SearchNode) => number;
+    compare = function(a: SearchNode, b: SearchNode) : number {
         if(a.astarcost > b.astarcost) return -1;
         if(a.astarcost < b.astarcost) return 1;
         return 0;
     }
-    // Function to compute the path (acts as the backtracking step).
-    function path(endNode : SearchNode) : Successor<Node>[] {
+    // Define function to compute the path
+
+    function path(endNode : Node) : Successor<Node>[] {
         var path : Successor<Node>[] = [];
-        var node : SearchNode = endNode;
-        while(node.edge && node.parent) {
-            path.push(node.edge);
-            node = node.parent;
+        var node : Node = endNode;
+        var curSearchNode: SearchNode | undefined = nodeDictionary.getValue(node);
+        while(curSearchNode) {
+            path.push(curSearchNode.graphNode);
+            curSearchNode = (curSearchNode.parentNode.graphNode) ? nodeDictionary.getValue(curSearchNode.parentNode.graphNode.child) : undefined;
         }
         return path.reverse();
     }
-    // Function to compute the heuristics cost for a specified node.
-    function heurcost(node : Node) : number {
-        var cost : number | undefined = hCostDict.getValue(node);
-        if(!cost) // if heuristic cost hasn't never been computed before
-            hCostDict.setValue(node, (cost = heuristics(node)));
-        return cost;
-    }
-    // Define some useful datastructures.
-    var visited   : Set<Node> = new Set();                               // set of visited nodes
-    var tCostDict : Dictionary<Node,number> = new Dictionary();             // total costs
-    var hCostDict : Dictionary<Node,number> = new Dictionary();             // heuristic costs
-    var frontier  : PriorityQueue<SearchNode> = new PriorityQueue(compare); // frontier
-
-    // Start the timer and initialize with the start node.
+    // Start the timer, define the frontier and the visited set
+    var currentSearchNode: SearchNode | undefined;
+    var currentNode: Node;
+    var nodeDictionary: Dictionary<Node, SearchNode|undefined> = new Dictionary<Node,SearchNode|undefined>();
     var endTime = Date.now() + timeout * 1000;
-    frontier.add(new SearchNode(undefined, undefined, 0, 0));
-    visited.add(start);
+    var frontier : PriorityQueue<SearchNode> = new PriorityQueue<SearchNode>(compare);
+    var successors: Successor<Node>[] = [];
 
-    // Searching begins here.    
+    frontier.enqueue(new SearchNode(undefined, undefined,0));
+    
+    // Searching begins here
     while(Date.now() < endTime) {
-        var searchNode : SearchNode | undefined = frontier.dequeue();
-        if(!searchNode) {
-            return new SearchResult<Node>('failure', [], -1, visited.size());
+        currentSearchNode = frontier.dequeue();
+
+        if(!currentSearchNode) {
+            return new SearchResult<Node>('failure', [], -1, nodeDictionary.keys.length + frontier.size());
         }
-        var graphNode : Node = (searchNode.edge)? searchNode.edge.child : start;   //if the search node has an edge, then the graph node is equal to the child of that edge, otherwise the graph node is the start node. Test 
-        if(goal(graphNode)) {
-            return new SearchResult<Node>('success', path(searchNode), searchNode.totalcost, visited.size());
-        }
-        var successors : Successor<Node>[] = graph.successors(graphNode);
-        for(var edge of successors) {
-            visited.add(edge.child);
-            var totalcost : number = searchNode.totalcost + edge.cost;
-            var astarcost : number = totalcost + heuristics(edge.child);
-            frontier.enqueue(new SearchNode(searchNode, edge, totalcost, astarcost));
+
+        if(currentSearchNode.graphNode){
+            currentNode = currentSearchNode.graphNode.child;
+            if(!nodeDictionary.containsKey(currentNode)){
+                nodeDictionary.setValue(currentNode, currentSearchNode);
+            }
+            else{
+                var val:SearchNode = nodeDictionary.getValue(currentNode);
+                if(val.astarcost > currentSearchNode.astarcost){
+                    nodeDictionary.setValue(currentNode, currentSearchNode);
+                }
             }
         }
-	return new SearchResult<Node>('timeout', [], -1, visited.size());
-    }
-  
+        else{
+            currentNode = start;
+            nodeDictionary.setValue(start, undefined);
+        }
 
+        if(goal(currentNode)) {
+            return new SearchResult<Node>('success', path(currentNode), currentSearchNode.totalCost, nodeDictionary.keys.length + frontier.size());
+        }
+        successors = graph.successors(currentNode);
+        if(successors.length>0){
+            for (var next of successors){
+                frontier.enqueue(new SearchNode(currentSearchNode,next,currentSearchNode.totalCost+next.cost));
+            }
+        }
+    }
+    return new SearchResult<Node>('timeout', [], -1, nodeDictionary.keys().length+frontier.size());
+}
