@@ -1,32 +1,16 @@
-
-import {Successor, Graph, SearchResult} from "./Graph";
-
-// You might want to use one of these:
-import Set from "./lib/typescript-collections/src/lib/Set";
-import Dictionary from "./lib/typescript-collections/src/lib/Dictionary";
-import PriorityQueue from "./lib/typescript-collections/src/lib/PriorityQueue";
-
 /********************************************************************************
-** AStarSearch
-
-This module contains an implementation of the A* algorithm.
-You should change the function 'aStarSearch'. 
+This module contains A* search implementation, parameterised by a 'Node' type.
+@param graph: The graph on which to perform A* search.
+@param start: The initial node.
+@param goal: Function that returns true if the algorithm has reached the goal.
+@param heuristics: Function that estimates the heuristics cost of reaching the goal from a given Node.
+@param timeout: Maximum time (in seconds) to spend performing A* search.
+@returns: Returns a search result [path from start to goal, total cost, and some statistics].
 ********************************************************************************/
 
-/* A* search implementation, parameterised by a 'Node' type. 
- * The code here is just a template; you should rewrite this function entirely.
- * This template produces a dummy search result which is a random walk.
- *
- * Note that you should not change the API (type) of this function, only its body.
- *
- * @param graph: The graph on which to perform A* search.
- * @param start: The initial node.
- * @param goal: A function that returns true when given a goal node. Used to determine if the algorithm has reached the goal.
- * @param heuristics: The heuristic function. Used to estimate the cost of reaching the goal from a given Node.
- * @param timeout: Maximum time (in seconds) to spend performing A* search.
- * @returns: A search result, which contains the path from 'start' to a node satisfying 'goal', 
- *           the cost of this path, and some statistics.
- */
+import {Successor, Graph, SearchResult} from "./Graph";
+import Dictionary from "./lib/typescript-collections/src/lib/Dictionary";
+import PriorityQueue from "./lib/typescript-collections/src/lib/PriorityQueue";
 
 export function aStarSearch<Node> (
     graph : Graph<Node>,
@@ -38,84 +22,71 @@ export function aStarSearch<Node> (
 
     // Define a class to represent a search node
     class SearchNode {
-       constructor( 
+        constructor( 
             // undefined values are used only for the first search node (i.e. the start).
-            public parentNode    : SearchNode      | undefined, // parent search node
-            public graphNode      : Successor<Node> | undefined, // edge.child is current graph node
-            public totalCost : number,                      // total cost from start node
-            public heuristicCost : number,                      // total cost plus heuristics cost
-) {};
+            public parent    : SearchNode      | undefined, // parent search node
+            public edge      : Successor<Node> | undefined, // edge.child is current graph node
+            public totalcost : number,                      // total cost from start node
+            public astarcost : number,                      // total cost plus heuristics cost
+        ) {};
     }
 
-    // * Define a compare function for PriorityQueue *
-    var compare : (a: SearchNode, b: SearchNode) => number;
-    compare = function(a: SearchNode, b: SearchNode) : number {
-        if((a.totalCost + a.heuristicCost) > (b.totalCost + b.heuristicCost)) return -1;
-        if((a.totalCost + a.heuristicCost) < (b.totalCost + b.heuristicCost)) return 1;
+    // Define function to compare 2 searchnodes (x < y if x has higher cost than y).
+    function compare(x : SearchNode, y : SearchNode) : number {
+        if(x.astarcost > y.astarcost) return -1;
+        if(x.astarcost < y.astarcost) return 1;
         return 0;
     }
 
-    // * Define function to compute the path via backtracking *
-    function path(endNode : Node) : Successor<Node>[] {
+    // Define function to compute the path via backtracking.
+    function path(endNode : SearchNode) : Successor<Node>[] {
         var path : Successor<Node>[] = [];
-        var curSearchNode: SearchNode | undefined = nodeDictionary.getValue(endNode); // * Dictionary keeps the minimum cost path to a node from start node *
-        while(curSearchNode) {
-            path.push(curSearchNode.graphNode);
-            curSearchNode = (curSearchNode.parentNode.graphNode) ? nodeDictionary.getValue(curSearchNode.parentNode.graphNode.child) : undefined;
+        var node : SearchNode = endNode;
+        while(node.edge && node.parent) { // while node is not the start node
+            path.push(node.edge);
+            node = node.parent;
         }
         return path.reverse();
     }
 
-    // Variable declaration
-    var currentSearchNode: SearchNode | undefined;	// * to keep the SearchNode dequeued from the PriorityQueue
-    var currentNode: Node = start;						// * to keep the GraphNode to currentSearchNode
-    var nodeDictionary: Dictionary<Node, SearchNode> = new Dictionary<Node,SearchNode>();	// * to keep track of visisted nodes
+    // Define function to compute the heuristics cost for a specified node.
+    function heurcost(node : Node) : number {
+        var cost : number | undefined = heurTable.getValue(node); // look up in heurTable
+        if(!cost) // undefined means heur cost has not been computed before for this node
+            heurTable.setValue(node, (cost = heuristics(node)));
+        return cost;
+    }
+
+    // Start the timer and define some useful data structures.
     var endTime = Date.now() + timeout * 1000;
-    var frontier : PriorityQueue<SearchNode> = new PriorityQueue<SearchNode>(compare); 
-    var successors: Successor<Node>[] = [];
-    var visited : Set<Node> = new Set();
-    
-    currentSearchNode = new SearchNode(undefined, undefined,0, heuristics(start));
-    frontier.enqueue(currentSearchNode); // * specific to start node *
-    nodeDictionary.setValue(currentNode, currentSearchNode);
+    var frontier   : PriorityQueue<SearchNode> = new PriorityQueue<SearchNode>(compare);
+    var astarTable : Dictionary<Node,number> = new Dictionary(); // map node to minimum astarcost
+    var heurTable  : Dictionary<Node,number> = new Dictionary(); // map node to heuristics cost
+    frontier.add(new SearchNode(undefined, undefined, 0, 0));    // add start node to the frontier
     
     // Searching begins here
     while(Date.now() < endTime) {
-        currentSearchNode = frontier.dequeue();
-
-        if(!currentSearchNode) {
-            return new SearchResult<Node>('failure', [], -1, visited.size() + frontier.size());
+        var searchnode : SearchNode | undefined = frontier.dequeue();
+        if(!searchnode) {
+            // frontier is empty, so the search has failed
+            return new SearchResult<Node>('failure', [], -1, astarTable.size());
         }
-        currentNode = (currentSearchNode.graphNode) ? currentSearchNode.graphNode.child : start;
-        visited.add(currentNode);
-
-        if(goal(currentNode)) {
-            return new SearchResult<Node>('success', path(currentNode), currentSearchNode.totalCost, visited.size() + frontier.size());
+        var graphnode : Node = (searchnode.edge)? searchnode.edge.child : start;
+        if(goal(graphnode)) {
+            // found a path to goal, so returns success
+            return new SearchResult<Node>('success', path(searchnode), searchnode.totalcost, astarTable.size());
         }
-
-        successors = graph.successors(currentNode);
-        var heuristicCost: number;
-        
-        if(successors.length>0){
-        	for (var next of successors){
-        		if(visited.contains(next.child)){
-        			continue;
-        		}
-
-            	if(!nodeDictionary.containsKey(next.child)){
-            		var newNextNode: SearchNode = new SearchNode(currentSearchNode,next,currentSearchNode.totalCost+next.cost, heuristics(next.child));
-            		frontier.enqueue(newNextNode);
-            		nodeDictionary.setValue(next.child, newNextNode);
-            	}
-            	else{
-            		var previousNode: SearchNode = nodeDictionary.getValue(next.child);
-            		if((currentSearchNode.totalCost + next.cost) < previousNode.totalCost){
-            			var newNextNode: SearchNode = new SearchNode(currentSearchNode,next,currentSearchNode.totalCost+next.cost, previousNode.heuristicCost);
-            			nodeDictionary.setValue(next.child, newNextNode);
-            		}
-            	}
-        	}
+        var successors : Successor<Node>[] = graph.successors(graphnode);
+        for (var next of successors) {
+            var oldcost : number | undefined = astarTable.getValue(next.child);
+            var totalcost : number = searchnode.totalcost + next.cost;
+            var astarcost : number = totalcost + heurcost(next.child);
+            if(!oldcost || astarcost < oldcost) {
+                // add to frontier only if the new path gives a lower astarcost than previously found
+                astarTable.setValue(next.child, astarcost);
+                frontier.enqueue(new SearchNode(searchnode, next, totalcost, astarcost));
+            }
         }
     }
-    return new SearchResult<Node>('timeout', [], -1, visited.size() + frontier.size());
+    return new SearchResult<Node>('timeout', [], -1, astarTable.size());
 }
