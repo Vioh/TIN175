@@ -62,8 +62,9 @@ export function aStarSearch<Node> (
     var frontier   : PriorityQueue<SearchNode> = new PriorityQueue<SearchNode>(compare);
     var astarTable : Dictionary<Node,number> = new Dictionary(); // map node to minimum astarcost
     var heurTable  : Dictionary<Node,number> = new Dictionary(); // map node to heuristics cost
-    frontier.add(new SearchNode(undefined, undefined, 0, 0));    // add start node to the frontier
-    
+    frontier.add(new SearchNode(undefined, undefined, 0, heurcost(start)));    // add start node to the frontier
+    astarTable.setValue(start, heurcost(start));
+
     // Searching begins here
     while(Date.now() < endTime) {
         var searchnode : SearchNode | undefined = frontier.dequeue();
