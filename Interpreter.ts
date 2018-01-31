@@ -98,15 +98,18 @@ class Interpreter {
         // Instead it should call the other interpretation methods for
         // each of its arguments (cmd.entity and/or cmd.location).
         var interpretation : CommandSemantics;
-
+		interpretEntity(ent : Entity) : EntitySemantics {
+		//cmd.entity
         var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
         if (this.world.holding) {
             all_objects.push(this.world.holding);
         }
 
         if (cmd instanceof MoveCommand) {
+			//get entities instead of picking random 
             var a = all_objects[Math.floor(Math.random() * all_objects.length)];
             var b = all_objects[Math.floor(Math.random() * all_objects.length)];
+		
             if (a == b) {
                 throw "Cannot put an object ontop of itself";
             }
@@ -149,13 +152,23 @@ class Interpreter {
 
         return interpretation;
     }
+	
+	
+	// Use the functions in the interpretcommand
 
     interpretEntity(ent : Entity) : EntitySemantics {
+		//cmd.entity
+		//
         throw "Not implemented";
     }
 
     interpretLocation(loc : Location) : LocationSemantics {
-        throw "Not implemented";
+        //cmd.location
+		
+		//switch case
+		//....location = "table"
+		//...
+		throw "Not implemented";
     }
 
     interpretObject(obj : Object) : ObjectSemantics {
@@ -180,4 +193,6 @@ type ObjectSemantics   = string[]
 // around the semantics of its children
 type EntitySemantics   = {quantifier : string; object : ObjectSemantics}
 type LocationSemantics = {relation : string; entity : EntitySemantics}
+
+
 
