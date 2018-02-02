@@ -1,6 +1,23 @@
 
-import {WorldState} from "./World";
+/********************************************************************************
+The goal of the Interpreter module is to interpret a sentence written by the user
+in the context of the current world state. In particular, it must figure out which
+objects in the world (i.e. which elements in the "objects" field of WorldState)
+correspond to the ones referred to in the sentence.
 
+Moreover, it has to derive what the intended goal state is and return it as a 
+logical formula described in terms of literals, where each literal represents a 
+relation among objects that should hold. For example, assuming a world state 
+where "a" is a ball and "b" is a table, the command "put the ball on the table" 
+can be interpreted as the literal ontop(a,b). More complex goals can be written 
+using conjunctions and disjunctions of these literals. 
+
+In general, the module can take a list of possible parses and return a list of 
+possible interpretations. The core interpretation function ("interpretCommand")
+should produce a single itnerpretation for a single command.
+********************************************************************************/
+
+import {WorldState} from "./World";
 import {
     ShrdliteResult,
     Command, TakeCommand, DropCommand, MoveCommand,
@@ -9,46 +26,16 @@ import {
     DNFFormula, Conjunction, Literal,
 } from "./Types";
 
-/********************************************************************************
-** Interpreter
-
-The goal of the Interpreter module is to interpret a sentence
-written by the user in the context of the current world state. 
-In particular, it must figure out which objects in the world,
-i.e. which elements in the 'objects' field of WorldState, correspond
-to the ones referred to in the sentence. 
-
-Moreover, it has to derive what the intended goal state is and
-return it as a logical formula described in terms of literals, where
-each literal represents a relation among objects that should
-hold. For example, assuming a world state where "a" is a ball and
-"b" is a table, the command "put the ball on the table" can be
-interpreted as the literal ontop(a,b). More complex goals can be
-written using conjunctions and disjunctions of these literals.
- 
-In general, the module can take a list of possible parses and return
-a list of possible interpretations, but the code to handle this has
-already been written for you. The only part you need to implement is
-the core interpretation function, namely 'interpretCommand', which 
-produces a single interpretation for a single command.
-
-You should implement the function 'interpretCommand'. 
-********************************************************************************/
-
-//////////////////////////////////////////////////////////////////////
-// exported functions, classes and interfaces/types
-
-/* Top-level function for the Interpreter. 
+/**
+ * Top-level function for the Interpreter
  * It calls 'interpretCommand' for each possible parse of the command. 
  * You don't have to change this function.
- *
  * @param parses: List of parses produced by the Parser.
  * @param world: The current state of the world.
  * @returns: List of interpretation results, which are the parse results augmented 
  *           with interpretations. Each interpretation is represented by a DNFFormula.
  *           If there's an interpretation error, it throws an error with a string description.
  */
-
 export function interpret(parses : ShrdliteResult[], world : WorldState) : ShrdliteResult[] {
     var errors : string[] = [];
     var interpretations : ShrdliteResult[] = [];
@@ -70,40 +57,83 @@ export function interpret(parses : ShrdliteResult[], world : WorldState) : Shrdl
     return interpretations;
 }
 
+/*******************************************************************************
+TODO:
+- Throw runtime errors everywhere if interpretation errors occur.
+    // the => any => entity1.object.length == 1 
+    // the => all => entity1.object.length == 1 AND entity2.object.length == 1
+    // the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
+    // any => the => entity2.object.length == 1
+    // any => all => ???
+    // any => any => 
+    // all => the => 
+    // all => any => 
+    // all => all =>
+*******************************************************************************/
 
-/* The core interpretation class. 
- * The code here are just templates; you should rewrite this class entirely. 
- * In this template, the code produces a dummy interpretation which is 
- * not connected to the input 'cmd'. Your version of the class should
- * analyse 'cmd' in order to figure out what interpretation to return.
- */
+// This is the main interpretation result, a DNF formula.
+type CommandSemantics  = DNFFormula
 
+// Semantics of an object is a collection of objects that match the description.
+type ObjectSemantics   = string[]
+
+// Semantics of Entity/Location is a wrapper around semantics of its children.
+type EntitySemantics   = {quantifier : string; object : ObjectSemantics}
+type LocationSemantics = {relation : string; entity : EntitySemantics}
+
+/** The core interpretation class. */
 class Interpreter {
     constructor(
         private world : WorldState
     ) {}
 
-    /* The main interpretation method.
-     * Note that you should not change the API (type) of this method, only its body.
-     * This method should call the mutually recursive methods 
-     * 'interpretEntity', 'interpretLocation' and 'interpretObject'
-     *
-     * @param cmd: An object of type 'Command'.
-     * @returns: A DNFFormula representing the interpretation of the user's command.
-     *           If there's an interpretation error, it throws an error with a string description.
-     */
+    interpretMove(cmd : MoveCommand) : CommandSemantics {
+        var conjunctions : Conjunction[] = [];
+        var location : LocationSemantics = this.interpretLocation(cmd.location);
+        var ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
+        var ent2 : EntitySemantics = location.entity;
+        var relation : string = location.relation;
 
+        if(ent1.object.length == 0)
+            throw "No object matched the given description";
+        if(ent2.object.length == 0)
+            throw "Location unknown";
+
+        // "any" interpretation for quantifiers
+        for(var obj1 of ent1.object) {
+            for(var obj2 of ent2.object) {
+                var x : SimpleObject = this.world.objects.obj1;
+                var y : SimpleObject = this.world.objects.obj2;
+
+
+
+                if(x.size == "large" && y.size == "small") continue;
+                
+                
+
+
+                conjunctions.push(new Conjunction([
+                    new Literal(relation, [obj1, obj2])
+                ]));
+
+            }
+        }
+
+
+        // DNFFormula([conjunction1, conjunction2, ... ])
+        // Conunction([literal1, literal2, ...])
+        // Literal(relation, object => from objectsemantics)
+        // entity = {"all", "the", "any"; [list of objects matched]}
+        // location  = {relation, entity}
+        // relation => "leftof", "rightof", "inside", "ontop", "under", "beside", "above"
+        return new DNFFormula(conjunctions);
+    }
     public interpretCommand(cmd : Command) : CommandSemantics {
-        // This currently returns a dummy interpretation involving one or two random objects in the world.
-        // Instead it should call the other interpretation methods for
-        // each of its arguments (cmd.entity and/or cmd.location).
         var interpretation : CommandSemantics;
-
         var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
         if (this.world.holding) {
             all_objects.push(this.world.holding);
         }
-
         if (cmd instanceof MoveCommand) {
             var a = all_objects[Math.floor(Math.random() * all_objects.length)];
             var b = all_objects[Math.floor(Math.random() * all_objects.length)];
@@ -151,33 +181,25 @@ class Interpreter {
     }
 
     interpretEntity(ent : Entity) : EntitySemantics {
-        throw "Not implemented";
+        var obj : ObjectSemantics = this.interpretObject(ent.object);
+        return { "quantifier" : ent.quantifier, "object" : obj };
     }
 
     interpretLocation(loc : Location) : LocationSemantics {
-        throw "Not implemented";
+        var ent : EntitySemantics = this.interpretEntity(loc.entity);
+        return { "relation" : loc.relation, "entity" : ent };
     }
-
+    
     interpretObject(obj : Object) : ObjectSemantics {
         throw "Not implemented";
     }
 
+    interpretTake(cmd : TakeCommand) : CommandSemantics {
+        throw "Not yet implemented";
+    }
+    interpretDrop(cmd : DropCommand) : CommandSemantics {
+        throw "Not yet implemented";
+    }
+
 }
-
-
-//////////////////////////////////////////////////////////////////////
-// These are suggestions for semantic representations 
-// of the different parse result classes.
-
-// This is the main interpretation result, a DNF formula
-type CommandSemantics  = DNFFormula
-
-// The semantics of an object description is a collection of
-// the objects that match the description
-type ObjectSemantics   = string[]
-
-// The semantics of an Entity or a Location is just a wrapper
-// around the semantics of its children
-type EntitySemantics   = {quantifier : string; object : ObjectSemantics}
-type LocationSemantics = {relation : string; entity : EntitySemantics}
 
