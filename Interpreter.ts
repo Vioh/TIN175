@@ -71,14 +71,16 @@ TODO:
     // all => all =>
 *******************************************************************************/
 
-// This is the main interpretation result, a DNF formula.
-type CommandSemantics  = DNFFormula
+/** DNF formula is the main interpretation result. */
+type CommandSemantics = DNFFormula
 
-// Semantics of an object is a collection of objects that match the description.
-type ObjectSemantics   = string[]
+/** Semantics of an object is a collection of objects that match the description. */
+type ObjectSemantics = string[]
 
-// Semantics of Entity/Location is a wrapper around semantics of its children.
-type EntitySemantics   = {quantifier : string; object : ObjectSemantics}
+/** Semantics of Entity is a wrapper around semantics of its children. */
+type EntitySemantics = {quantifier : string; object : ObjectSemantics}
+
+/** Semantics of Location is a wrapper around semantics of its children. */
 type LocationSemantics = {relation : string; entity : EntitySemantics}
 
 /** The core interpretation class. */
@@ -86,6 +88,68 @@ class Interpreter {
     constructor(
         private world : WorldState
     ) {}
+
+    /** Returns error message if a physical law is violated, null otherwise */
+    checkPhysicalLaw(rel : string, obj1 : string, obj2 : string) : string | null {
+
+        // Returns true if str is a member of the specified array.
+        function memberOf(str : string, arr : string[]) : boolean {
+            return arr.indexOf(str) > -1;
+        }
+        // Find the actual objects in the world.
+        var x : SimpleObject = this.world.objects.obj1;
+        var y : SimpleObject = this.world.objects.obj2;
+
+        // Test physical laws relating to the floor.
+        if(x.form == "floor")
+            return "I cannot take the floor";
+        if(y.form == "floor" && memberOf(rel, ["under","leftof","rightof","beside","inside"]))
+            return `Nothing can be $(rel) the floor.`;
+
+        // The command must refer to 2 distinct objects in the world.
+        if(obj1 == obj2) return `Nothing can be $(rel) of itself`;
+
+        // #################################################################################################
+        // Size = small, large
+        // Form = anyform, brick, plank, ball, pyramid, box, table, floor
+        // Rela = support(ontop, under, above, inside), leftof, rightof, beside
+        // #################################################################################################
+        
+        // A ball can only be on top the floor.
+        if(x.form == "ball" && rel == "ontop" && y.form != "floor")
+            return `A ball can only be ontop the floor`;
+        
+        // A ball cannot support anything.
+        if(x.form == "ball" && rel == "under")
+            return `A ball cannot be under anything`;
+        if(y.form == "ball" && memberOf(rel, ["inside","ontop","above"]))
+            return `Nothing can be $(rel) a ball`;
+
+        // Boxes cannot contain pyramids, planks or boxes of the same size.
+        if(rel == "inside" && y.form == "box") {
+            if(memberOf(x.form, ["pyramid","plank","box"]) && x.size == y.size)
+                return `A $(x.form) cannot be inside a box of the same size`;
+        }
+        if(x.form == "box" && rel == "ontop" && memberOf(y.form, ["pyramid","brick"]))
+            // Small boxes cannot be supported by small bricks or pyramids.
+            if(x.size == "small" && y.size == "small")
+                return `A small box cannot be ontop a small $(y.form)`;
+            // Large boxes cannot be supported by large pyramids.
+            if(x.size == "large" && y.size == "large" && y.form == "pyramid")
+                return `A large box cannot be ontop a large pyramid`;
+
+        // Objects are "inside" boxes, but "ontop" of other objects
+        if(rel == "inside" && y.form != "box")
+            return `Nothing can be inside a $(y.form)`;
+        if(rel == "ontop" && y.form == "box")
+            return `Nothing can be on top of a box`;
+
+        // Small objects cannot support large objects. 
+        if(memberOf(rel, ["inside","ontop"]) && x.size == "large" && y.size == "small")
+            return `A large object cannot be $(rel) a small one`;
+        
+        return null;
+    }
 
     interpretMove(cmd : MoveCommand) : CommandSemantics {
         var conjunctions : Conjunction[] = [];
@@ -95,9 +159,9 @@ class Interpreter {
         var relation : string = location.relation;
 
         if(ent1.object.length == 0)
-            throw "No object matched the given description";
+            throw "Couldn't find any matching object";
         if(ent2.object.length == 0)
-            throw "Location unknown";
+            throw "Couldn't find any matching destination";
 
         // "any" interpretation for quantifiers
         for(var obj1 of ent1.object) {
@@ -106,10 +170,6 @@ class Interpreter {
                 var y : SimpleObject = this.world.objects.obj2;
 
 
-
-                if(x.size == "large" && y.size == "small") continue;
-                
-                
 
 
                 conjunctions.push(new Conjunction([
