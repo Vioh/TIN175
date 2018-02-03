@@ -79,7 +79,7 @@ class Interpreter {
         private world : WorldState
     ) {}
 
-    /** Returns an interpretation (DNF formula) of a command */
+    /** Returns an interpretation (DNF formula) of a command. */
     public interpretCommand(cmd : Command) : CommandSemantics {
         if(cmd instanceof MoveCommand) return this.interpretMove(cmd);
         if(cmd instanceof TakeCommand) return this.interpretTake(cmd);
@@ -101,7 +101,7 @@ class Interpreter {
         if(ent1.object.length == 0) throw `Couldn't find any matching object`;
         if(ent2.object.length == 0) throw `Couldn't find any matching destination`;
 
-        // Interprete using the semantics of the "any" quantifier.
+        // Interpret using the semantics of the "any" quantifier.
         for(let x of ent1.object) {
             for(let y of ent2.object) {
                 let error = this.validate(x, y, location.relation).error;
@@ -111,6 +111,7 @@ class Interpreter {
                     new Literal(location.relation, [x, y])
                 ]));
         }}
+        // TODO: is it necessary to merge all errors?
         if(conjunctions.length == 0)
             throw errors.join(" ; "); // merge all errors into one
         else return new DNFFormula(conjunctions);
@@ -120,7 +121,7 @@ class Interpreter {
     interpretTake(cmd : TakeCommand) : CommandSemantics {
         let ent : EntitySemantics = this.interpretEntity(cmd.entity);
 
-        // Error handlings for all quantifiers.
+        // Error handlings for all the quantifiers.
         if(ent.object.length == 0) throw `Couldn't find any matching object`;
         if(ent.object.length != 1) {
             if(ent.quantifier == "the") throw `Found too many matching objects`;
@@ -137,16 +138,30 @@ class Interpreter {
 
     /** Returns an interpretation for the drop command. */
     interpretDrop(cmd : DropCommand) : CommandSemantics {
-        // var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
-        // if (this.world.holding) {
-        //     all_objects.push(this.world.holding);
-        // }
-        // if (cmd instanceof DropCommand) {
-        //     if (!this.world.holding)
-        //         throw "I'm not holding anything";
-        // }
-        // combine the error with join (;) ==> but if a DNF formula is found return commandsemantics
-        throw "Not yet implemented";
+        let errors : string[] = [];
+        let conjunctions : Conjunction[] = [];
+        let location : LocationSemantics = this.interpretLocation(cmd.location);
+        let ent : EntitySemantics = location.entity;
+
+        // Intial error handlings.
+        if(!this.world.holding)
+            throw `I'm not holding anything`;
+        if(ent.object.length == 0) 
+            throw `Couldn't find any matching destination`;
+
+        // Interpret using the semantics of the "any" quantifier.
+        for(let x of ent.object) {
+            let error = this.validate(this.world.holding, x, location.relation).error;
+            if(error) // physical law violation
+                errors.push(error);
+            else conjunctions.push(new Conjunction([
+                new Literal(location.relation, [this.world.holding, x])
+            ]));
+        }
+        // TODO: is it necessary to merge all errors?
+        if(conjunctions.length == 0)
+            throw errors.join(" ; "); // merge all errors into one
+        else return new DNFFormula(conjunctions);
     }
 
     /** Validate and returns an error message if a physical law is violated.  */
@@ -204,11 +219,13 @@ class Interpreter {
         return {error: undefined}; // Reaching here means that no physical law is violated.
     }
 
+    /** Returns an interpretation for an entity. */
     interpretEntity(ent : Entity) : EntitySemantics {
         let obj : ObjectSemantics = this.interpretObject(ent.object);
         return { "quantifier" : ent.quantifier, "object" : obj };
     }
 
+    /** Returns an interpretation for a location. */
     interpretLocation(loc : Location) : LocationSemantics {
         let ent : EntitySemantics = this.interpretEntity(loc.entity);
         return { "relation" : loc.relation, "entity" : ent };
@@ -216,13 +233,12 @@ class Interpreter {
     
     interpretObject(obj : Object) : ObjectSemantics {
         throw "Not implemented";
+        // var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
+        // if (this.world.holding) {
+        //     all_objects.push(this.world.holding);
+        // }
     }
 }
-
-
-
-
-
 
 /*******************************************************************************
 TODO:
@@ -232,12 +248,10 @@ TODO:
     // the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
     // any => the => entity2.object.length == 1
     // any => all => ???
-    // any => any => 
-    // all => the => 
-    // all => any => 
-    // all => all =>
-
-
+    // any => any => ??? 
+    // all => the => ???
+    // all => any => ???
+    // all => all => ???
     // #################################################################################################
     // Relation = support(ontop, under, above, inside), leftof, rightof, beside
     // #################################################################################################
