@@ -79,161 +79,142 @@ class Interpreter {
         private world : WorldState
     ) {}
 
-    /** Returns error message if a physical law is violated, null otherwise */
-    checkPhysicalLaws(rel : string, obj1 : string, obj2 : string) : string | null {
+    /** Returns an interpretation (DNF formula) of a command */
+    public interpretCommand(cmd : Command) : CommandSemantics {
+        if(cmd instanceof MoveCommand) return this.interpretMove(cmd);
+        if(cmd instanceof TakeCommand) return this.interpretTake(cmd);
+        if(cmd instanceof DropCommand) return this.interpretDrop(cmd);
+        throw "Unknown command";
+    }
+
+    /** Returns an interpretation of the move command. */
+    interpretMove(cmd : MoveCommand) : CommandSemantics {
+        let errors : string[] = [];
+        let conjunctions : Conjunction[] = [];
+        
+        // Interpret the components of the MoveCommand.
+        let location : LocationSemantics = this.interpretLocation(cmd.location);
+        let ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
+        let ent2 : EntitySemantics = location.entity;
+
+        // Pre-processing and throw erros if necessary. 
+        if(ent1.object.length == 0) throw `Couldn't find any matching object`;
+        if(ent2.object.length == 0) throw `Couldn't find any matching destination`;
+
+        // Interpreting (using the semantics of "any" quantifier).
+        for(let x of ent1.object) {
+            for(let y of ent2.object) {
+                let error = this.validate(x, y, location.relation).error;
+                if(error) // physical law violation
+                    errors.push(error);
+                else conjunctions.push(new Conjunction([
+                    new Literal(location.relation, [x, y])
+                ]));
+        }}
+        if(conjunctions.length == 0)
+            throw errors.join(" ; "); // merge all errors into one
+        else return new DNFFormula(conjunctions);
+    }
+    
+    interpretTake(cmd : TakeCommand) : CommandSemantics {
+        let errors : string[] = [];
+        let conjunctions : Conjunction[] = [];
+        
+        // Interpret the components of the MoveCommand.
+        let location : LocationSemantics = this.interpretLocation(cmd.location);
+        let ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
+        let ent2 : EntitySemantics = location.entity;
+
+
+
+
+        // var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
+        // if (this.world.holding) {
+        //     all_objects.push(this.world.holding);
+        // }
+        // if (cmd instanceof DropCommand) {
+        //     if (!this.world.holding)
+        //         throw "I'm not holding anything";
+        // }
+        // combine the error with join (;)
+        // but if a DNF formula is found return commandsemantics
+
+        if(conjunctions.length == 0)
+            throw errors.join(" ; "); // merge all errors into one
+        else return new DNFFormula(conjunctions);
+    
+    }
+    interpretDrop(cmd : DropCommand) : CommandSemantics {
+        throw "Not yet implemented";
+    }
+
+    /** Validate and returns an error message if a physical law is violated.  */
+    validate(obj1 : string, obj2 : string, rel : string) : {error?: string} {
 
         // Returns true if str is a member of the specified array.
         function memberOf(str : string, arr : string[]) : boolean {
             return arr.indexOf(str) > -1;
         }
         // Find the actual objects in the world.
-        var x : SimpleObject = this.world.objects.obj1;
-        var y : SimpleObject = this.world.objects.obj2;
+        let x : SimpleObject = this.world.objects.obj1;
+        let y : SimpleObject = this.world.objects.obj2;
 
         // Test physical laws relating to the floor.
         if(x.form == "floor")
-            return "I cannot take the floor";
+            return {error: "I cannot take the floor"};
         if(y.form == "floor" && memberOf(rel, ["under","leftof","rightof","beside","inside"]))
-            return `Nothing can be $(rel) the floor.`;
+            return {error: `Nothing can be $(rel) the floor.`};
 
         // The command must refer to 2 distinct objects in the world.
-        if(obj1 == obj2) return `Nothing can be $(rel) itself`;
+        if(obj1 == obj2) return {error: `Nothing can be $(rel) itself`};
 
         // A ball can be on top of ONLY the floor (otherwise they roll away).
         if(x.form == "ball" && y.form != "floor" && rel == "ontop")
-            return `A ball can only be ontop the floor`;
+            return {error: `A ball can only be ontop the floor`};
 
         // A ball cannot support anything.
         if(x.form == "ball" && rel == "under")
-            return `A ball cannot be under anything`;
+            return {error: `A ball cannot be under anything`};
         if(y.form == "ball" && memberOf(rel, ["ontop","above"]))
-            return `Nothing can be $(rel) a ball`;
+            return {error: `Nothing can be $(rel) a ball`};
 
         // Objects are "inside" boxes, but "ontop" of other objects
         if(y.form != "box" && rel == "inside")
-            return `Nothing can be inside a $(y.form)`;
+            return {error: `Nothing can be inside a $(y.form)`};
         if(y.form == "box" && rel == "ontop")
-            return `Nothing can be ontop a box`;
+            return {error: `Nothing can be ontop a box`};
 
         // Boxes cannot contain pyramids, planks or boxes of the same size.
         if(memberOf(x.form, ["pyramid","plank","box"]) && y.form == "box" && rel == "inside")
-            if(x.size == y.size) return `A $(x.form) cannot be inside a box of the same size`;
+            if(x.size == y.size) return {error: `A $(x.form) cannot be inside a box of the same size`};
 
         if(x.form == "box" && memberOf(y.form, ["pyramid","brick"]) && rel == "ontop")
             // Small boxes cannot be supported by small bricks or pyramids.
             if(x.size == "small" && y.size == "small")
-                return `A small box cannot be ontop a small $(y.form)`;
+                return {error: `A small box cannot be ontop a small $(y.form)`};
             // Large boxes cannot be supported by large pyramids.
             if(x.size == "large" && y.size == "large" && y.form == "pyramid")
-                return `A large box cannot be ontop a large pyramid`;
+                return {error: `A large box cannot be ontop a large pyramid`};
 
         // Small objects cannot support large objects. 
         if(memberOf(rel, ["inside","ontop"]) && x.size == "large" && y.size == "small")
-            return `A large object cannot be $(rel) a small one`;
+            return {error: `A large object cannot be $(rel) a small one`};
 
-        return null; // reaching here means that no physical law is violated.
-    }
-
-    interpretMove(cmd : MoveCommand) : CommandSemantics {
-        var conjunctions : Conjunction[] = [];
-        var location : LocationSemantics = this.interpretLocation(cmd.location);
-        var ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
-        var ent2 : EntitySemantics = location.entity;
-        var relation : string = location.relation;
-
-        if(ent1.object.length == 0)
-            throw "Couldn't find any matching object";
-        if(ent2.object.length == 0)
-            throw "Couldn't find any matching destination";
-
-        // "any" interpretation for quantifiers
-        for(var obj1 of ent1.object) {
-            for(var obj2 of ent2.object) {
-                var x : SimpleObject = this.world.objects.obj1;
-                var y : SimpleObject = this.world.objects.obj2;
-
-                conjunctions.push(new Conjunction([
-                    new Literal(relation, [obj1, obj2])
-                ]));
-            }
-        }
-        // DNFFormula([conjunction1, conjunction2, ... ])
-        // Conunction([literal1, literal2, ...])
-        // Literal(relation, object => from objectsemantics)
-        // entity = {"all", "the", "any"; [list of objects matched]}
-        // location  = {relation, entity}
-        // relation => "leftof", "rightof", "inside", "ontop", "under", "beside", "above"
-        return new DNFFormula(conjunctions);
-    }
-    public interpretCommand(cmd : Command) : CommandSemantics {
-        var interpretation : CommandSemantics;
-        var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
-        if (this.world.holding) {
-            all_objects.push(this.world.holding);
-        }
-        if (cmd instanceof MoveCommand) {
-            var a = all_objects[Math.floor(Math.random() * all_objects.length)];
-            var b = all_objects[Math.floor(Math.random() * all_objects.length)];
-            if (a == b) {
-                throw "Cannot put an object ontop of itself";
-            }
-            interpretation = new DNFFormula([
-                new Conjunction([ // ontop(a, b) & ontop(b, floor)
-                    new Literal("ontop", [a, b]),
-                    new Literal("ontop", [b, "floor"])
-                ])
-            ]);
-        }
-
-        else if (cmd instanceof TakeCommand) {
-            var a = all_objects[Math.floor(Math.random() * all_objects.length)];
-            interpretation = new DNFFormula([
-                new Conjunction([ // holding(a)
-                    new Literal("holding", [a])
-                ])
-            ]);
-        }
-
-        else if (cmd instanceof DropCommand) {
-            if (!this.world.holding) {
-                throw "I'm not holding anything";
-            }
-            var a = this.world.holding;
-            var b = all_objects[Math.floor(Math.random() * all_objects.length)];
-            if (a == b) {
-                throw "Cannot put an object ontop of itself";
-            }
-            interpretation = new DNFFormula([
-                new Conjunction([ // ontop(a, b)
-                    new Literal("ontop", [a, b])
-                ])
-            ]);
-        }
-        else {
-            throw "Unknown command";
-        }
-        return interpretation;
+        return {error: undefined}; // Reaching here means that no physical law is violated.
     }
 
     interpretEntity(ent : Entity) : EntitySemantics {
-        var obj : ObjectSemantics = this.interpretObject(ent.object);
+        let obj : ObjectSemantics = this.interpretObject(ent.object);
         return { "quantifier" : ent.quantifier, "object" : obj };
     }
 
     interpretLocation(loc : Location) : LocationSemantics {
-        var ent : EntitySemantics = this.interpretEntity(loc.entity);
+        let ent : EntitySemantics = this.interpretEntity(loc.entity);
         return { "relation" : loc.relation, "entity" : ent };
     }
     
     interpretObject(obj : Object) : ObjectSemantics {
         throw "Not implemented";
-    }
-
-    interpretTake(cmd : TakeCommand) : CommandSemantics {
-        throw "Not yet implemented";
-    }
-    interpretDrop(cmd : DropCommand) : CommandSemantics {
-        throw "Not yet implemented";
     }
 }
 
