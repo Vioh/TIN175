@@ -87,7 +87,7 @@ class Interpreter {
         throw "Unknown command";
     }
 
-    /** Returns an interpretation of the move command. */
+    /** Returns an interpretation for the move command. */
     interpretMove(cmd : MoveCommand) : CommandSemantics {
         let errors : string[] = [];
         let conjunctions : Conjunction[] = [];
@@ -97,11 +97,11 @@ class Interpreter {
         let ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
         let ent2 : EntitySemantics = location.entity;
 
-        // Pre-processing and throw erros if necessary. 
+        // Pre-processing and throw errors if necessary. 
         if(ent1.object.length == 0) throw `Couldn't find any matching object`;
         if(ent2.object.length == 0) throw `Couldn't find any matching destination`;
 
-        // Interpreting (using the semantics of "any" quantifier).
+        // Interprete using the semantics of the "any" quantifier.
         for(let x of ent1.object) {
             for(let y of ent2.object) {
                 let error = this.validate(x, y, location.relation).error;
@@ -116,18 +116,27 @@ class Interpreter {
         else return new DNFFormula(conjunctions);
     }
     
+    /** Returns an interpretation for the take command. */
     interpretTake(cmd : TakeCommand) : CommandSemantics {
-        let errors : string[] = [];
+        let ent : EntitySemantics = this.interpretEntity(cmd.entity);
+
+        // Error handlings for all quantifiers.
+        if(ent.object.length == 0) throw `Couldn't find any matching object`;
+        if(ent.object.length != 1) {
+            if(ent.quantifier == "the") throw `Found too many matching objects`;
+            if(ent.quantifier == "all") throw `I cannot take more than one object`;
+        }
+        // Create conjunctions for the interpreting.
         let conjunctions : Conjunction[] = [];
-        
-        // Interpret the components of the MoveCommand.
-        let location : LocationSemantics = this.interpretLocation(cmd.location);
-        let ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
-        let ent2 : EntitySemantics = location.entity;
+        for(let x of ent.object)
+            conjunctions.push(new Conjunction([
+                new Literal("holding", [x])
+            ]));
+        return new DNFFormula(conjunctions);
+    }
 
-
-
-
+    /** Returns an interpretation for the drop command. */
+    interpretDrop(cmd : DropCommand) : CommandSemantics {
         // var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
         // if (this.world.holding) {
         //     all_objects.push(this.world.holding);
@@ -136,15 +145,7 @@ class Interpreter {
         //     if (!this.world.holding)
         //         throw "I'm not holding anything";
         // }
-        // combine the error with join (;)
-        // but if a DNF formula is found return commandsemantics
-
-        if(conjunctions.length == 0)
-            throw errors.join(" ; "); // merge all errors into one
-        else return new DNFFormula(conjunctions);
-    
-    }
-    interpretDrop(cmd : DropCommand) : CommandSemantics {
+        // combine the error with join (;) ==> but if a DNF formula is found return commandsemantics
         throw "Not yet implemented";
     }
 
