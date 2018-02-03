@@ -230,13 +230,41 @@ class Interpreter {
         let ent : EntitySemantics = this.interpretEntity(loc.entity);
         return { "relation" : loc.relation, "entity" : ent };
     }
-    
+
+    /** Returns an interpretation for an object. */
     interpretObject(obj : Object) : ObjectSemantics {
-        throw "Not implemented";
-        // var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
-        // if (this.world.holding) {
-        //     all_objects.push(this.world.holding);
-        // }
+        if(obj instanceof SimpleObject) return this.interpretSimpleObject(obj);
+        if(obj instanceof RelativeObject) return this.interpretRelativeObject(obj);
+        throw "Unknown object";
+    }
+
+    /** Returns an interpretation for a simple object. */
+    interpretSimpleObject(obj : SimpleObject) : ObjectSemantics {
+        let matched : ObjectSemantics = []; // output (the matched objects to be returned)
+
+        // Returns true if 2 simple objects have the same properties. 
+        function same(x : SimpleObject, y : SimpleObject) : boolean {
+            return x.form == y.form && x.color == y.color && x.size == y.size;
+        }
+        // Get all objects available in the world.
+        let all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
+        if(this.world.holding)
+            all_objects.push(this.world.holding);
+
+        // Find matching objects in the world.
+        Object.keys(this.world.objects).forEach(function(id) {
+            if(same(obj, this.world.objects[id])) matched.push(id);
+        });
+        return matched;
+    }
+
+    /** Returns an interpretation for a relative object. */
+    interpretRelativeObject(obj : RelativeObject) : ObjectSemantics {
+        let matched : ObjectSemantics = []; // output (the matched objects to be returned)
+
+        return [];
+        // obj.location;
+        // obj.object
     }
 }
 
