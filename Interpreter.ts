@@ -26,6 +26,18 @@ import {
     DNFFormula, Conjunction, Literal,
 } from "./Types";
 
+/** DNF formula is the main interpretation result. */
+type CommandSemantics = DNFFormula
+
+/** Semantics of an object is a collection of objects that match the description. */
+type ObjectSemantics = string[]
+
+/** Semantics of Entity is a wrapper around semantics of its children. */
+type EntitySemantics = {quantifier : string; object : ObjectSemantics}
+
+/** Semantics of Location is a wrapper around semantics of its children. */
+type LocationSemantics = {relation : string; entity : EntitySemantics}
+
 /**
  * Top-level function for the Interpreter
  * It calls 'interpretCommand' for each possible parse of the command. 
@@ -57,31 +69,9 @@ export function interpret(parses : ShrdliteResult[], world : WorldState) : Shrdl
     return interpretations;
 }
 
-/*******************************************************************************
-TODO:
-- Throw runtime errors everywhere if interpretation errors occur.
-    // the => any => entity1.object.length == 1 
-    // the => all => entity1.object.length == 1 AND entity2.object.length == 1
-    // the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
-    // any => the => entity2.object.length == 1
-    // any => all => ???
-    // any => any => 
-    // all => the => 
-    // all => any => 
-    // all => all =>
-*******************************************************************************/
-
-/** DNF formula is the main interpretation result. */
-type CommandSemantics = DNFFormula
-
-/** Semantics of an object is a collection of objects that match the description. */
-type ObjectSemantics = string[]
-
-/** Semantics of Entity is a wrapper around semantics of its children. */
-type EntitySemantics = {quantifier : string; object : ObjectSemantics}
-
-/** Semantics of Location is a wrapper around semantics of its children. */
-type LocationSemantics = {relation : string; entity : EntitySemantics}
+// ===============================================================================================
+// ===============================================================================================
+// ===============================================================================================
 
 /** The core interpretation class. */
 class Interpreter {
@@ -90,7 +80,7 @@ class Interpreter {
     ) {}
 
     /** Returns error message if a physical law is violated, null otherwise */
-    checkPhysicalLaw(rel : string, obj1 : string, obj2 : string) : string | null {
+    checkPhysicalLaws(rel : string, obj1 : string, obj2 : string) : string | null {
 
         // Returns true if str is a member of the specified array.
         function memberOf(str : string, arr : string[]) : boolean {
@@ -107,30 +97,29 @@ class Interpreter {
             return `Nothing can be $(rel) the floor.`;
 
         // The command must refer to 2 distinct objects in the world.
-        if(obj1 == obj2) return `Nothing can be $(rel) of itself`;
+        if(obj1 == obj2) return `Nothing can be $(rel) itself`;
 
-        // #################################################################################################
-        // Size = small, large
-        // Form = anyform, brick, plank, ball, pyramid, box, table, floor
-        // Rela = support(ontop, under, above, inside), leftof, rightof, beside
-        // #################################################################################################
-        
-        // A ball can only be on top the floor.
-        if(x.form == "ball" && rel == "ontop" && y.form != "floor")
+        // A ball can be on top of ONLY the floor (otherwise they roll away).
+        if(x.form == "ball" && y.form != "floor" && rel == "ontop")
             return `A ball can only be ontop the floor`;
-        
+
         // A ball cannot support anything.
         if(x.form == "ball" && rel == "under")
             return `A ball cannot be under anything`;
-        if(y.form == "ball" && memberOf(rel, ["inside","ontop","above"]))
+        if(y.form == "ball" && memberOf(rel, ["ontop","above"]))
             return `Nothing can be $(rel) a ball`;
 
+        // Objects are "inside" boxes, but "ontop" of other objects
+        if(y.form != "box" && rel == "inside")
+            return `Nothing can be inside a $(y.form)`;
+        if(y.form == "box" && rel == "ontop")
+            return `Nothing can be ontop a box`;
+
         // Boxes cannot contain pyramids, planks or boxes of the same size.
-        if(rel == "inside" && y.form == "box") {
-            if(memberOf(x.form, ["pyramid","plank","box"]) && x.size == y.size)
-                return `A $(x.form) cannot be inside a box of the same size`;
-        }
-        if(x.form == "box" && rel == "ontop" && memberOf(y.form, ["pyramid","brick"]))
+        if(memberOf(x.form, ["pyramid","plank","box"]) && y.form == "box" && rel == "inside")
+            if(x.size == y.size) return `A $(x.form) cannot be inside a box of the same size`;
+
+        if(x.form == "box" && memberOf(y.form, ["pyramid","brick"]) && rel == "ontop")
             // Small boxes cannot be supported by small bricks or pyramids.
             if(x.size == "small" && y.size == "small")
                 return `A small box cannot be ontop a small $(y.form)`;
@@ -138,17 +127,11 @@ class Interpreter {
             if(x.size == "large" && y.size == "large" && y.form == "pyramid")
                 return `A large box cannot be ontop a large pyramid`;
 
-        // Objects are "inside" boxes, but "ontop" of other objects
-        if(rel == "inside" && y.form != "box")
-            return `Nothing can be inside a $(y.form)`;
-        if(rel == "ontop" && y.form == "box")
-            return `Nothing can be on top of a box`;
-
         // Small objects cannot support large objects. 
         if(memberOf(rel, ["inside","ontop"]) && x.size == "large" && y.size == "small")
             return `A large object cannot be $(rel) a small one`;
-        
-        return null;
+
+        return null; // reaching here means that no physical law is violated.
     }
 
     interpretMove(cmd : MoveCommand) : CommandSemantics {
@@ -169,17 +152,11 @@ class Interpreter {
                 var x : SimpleObject = this.world.objects.obj1;
                 var y : SimpleObject = this.world.objects.obj2;
 
-
-
-
                 conjunctions.push(new Conjunction([
                     new Literal(relation, [obj1, obj2])
                 ]));
-
             }
         }
-
-
         // DNFFormula([conjunction1, conjunction2, ... ])
         // Conunction([literal1, literal2, ...])
         // Literal(relation, object => from objectsemantics)
@@ -232,11 +209,9 @@ class Interpreter {
                 ])
             ]);
         }
-
         else {
             throw "Unknown command";
         }
-
         return interpretation;
     }
 
@@ -260,6 +235,28 @@ class Interpreter {
     interpretDrop(cmd : DropCommand) : CommandSemantics {
         throw "Not yet implemented";
     }
-
 }
 
+
+
+
+
+
+/*******************************************************************************
+TODO:
+- Throw runtime errors everywhere if interpretation errors occur.
+    // the => any => entity1.object.length == 1 
+    // the => all => entity1.object.length == 1 AND entity2.object.length == 1
+    // the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
+    // any => the => entity2.object.length == 1
+    // any => all => ???
+    // any => any => 
+    // all => the => 
+    // all => any => 
+    // all => all =>
+
+
+    // #################################################################################################
+    // Relation = support(ontop, under, above, inside), leftof, rightof, beside
+    // #################################################################################################
+*******************************************************************************/
