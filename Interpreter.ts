@@ -102,13 +102,13 @@ class Interpreter {
         if(ent2.object.length == 0) throw `Couldn't find any matching destination`;
 
         // Interpret using the semantics of the "any" quantifier.
-        for(let x of ent1.object) {
-            for(let y of ent2.object) {
-                let error = this.validate(x, y, location.relation).error;
+        for(let a of ent1.object) {
+            for(let b of ent2.object) {
+                let error = this.validate(a, b, location.relation).error;
                 if(error) // physical law violation
                     errors.push(error);
                 else conjunctions.push(new Conjunction([
-                    new Literal(location.relation, [x, y])
+                    new Literal(location.relation, [a, b])
                 ]));
         }}
         // TODO: is it necessary to merge all errors?
@@ -172,48 +172,48 @@ class Interpreter {
             return arr.indexOf(str) > -1;
         }
         // Find the actual objects in the world.
-        let x : SimpleObject = this.world.objects.obj1;
-        let y : SimpleObject = this.world.objects.obj2;
+        let a : SimpleObject = this.world.objects.obj1;
+        let b : SimpleObject = this.world.objects.obj2;
 
         // Test physical laws relating to the floor.
-        if(x.form == "floor")
+        if(a.form == "floor")
             return {error: "I cannot take the floor"};
-        if(y.form == "floor" && memberOf(rel, ["under","leftof","rightof","beside","inside"]))
+        if(b.form == "floor" && memberOf(rel, ["under","leftof","rightof","beside","inside"]))
             return {error: `Nothing can be $(rel) the floor.`};
 
         // The command must refer to 2 distinct objects in the world.
         if(obj1 == obj2) return {error: `Nothing can be $(rel) itself`};
 
         // A ball can be on top of ONLY the floor (otherwise they roll away).
-        if(x.form == "ball" && y.form != "floor" && rel == "ontop")
+        if(a.form == "ball" && b.form != "floor" && rel == "ontop")
             return {error: `A ball can only be ontop the floor`};
 
         // A ball cannot support anything.
-        if(x.form == "ball" && rel == "under")
+        if(a.form == "ball" && rel == "under")
             return {error: `A ball cannot be under anything`};
-        if(y.form == "ball" && memberOf(rel, ["ontop","above"]))
+        if(b.form == "ball" && memberOf(rel, ["ontop","above"]))
             return {error: `Nothing can be $(rel) a ball`};
 
         // Objects are "inside" boxes, but "ontop" of other objects
-        if(y.form != "box" && rel == "inside")
+        if(b.form != "box" && rel == "inside")
             return {error: `Nothing can be inside a $(y.form)`};
-        if(y.form == "box" && rel == "ontop")
+        if(b.form == "box" && rel == "ontop")
             return {error: `Nothing can be ontop a box`};
 
         // Boxes cannot contain pyramids, planks or boxes of the same size.
-        if(memberOf(x.form, ["pyramid","plank","box"]) && y.form == "box" && rel == "inside")
-            if(x.size == y.size) return {error: `A $(x.form) cannot be inside a box of the same size`};
+        if(memberOf(a.form, ["pyramid","plank","box"]) && b.form == "box" && rel == "inside")
+            if(a.size == b.size) return {error: `A $(a.form) cannot be inside a box of the same size`};
 
-        if(x.form == "box" && memberOf(y.form, ["pyramid","brick"]) && rel == "ontop")
+        if(a.form == "box" && memberOf(b.form, ["pyramid","brick"]) && rel == "ontop")
             // Small boxes cannot be supported by small bricks or pyramids.
-            if(x.size == "small" && y.size == "small")
+            if(a.size == "small" && b.size == "small")
                 return {error: `A small box cannot be ontop a small $(y.form)`};
             // Large boxes cannot be supported by large pyramids.
-            if(x.size == "large" && y.size == "large" && y.form == "pyramid")
+            if(a.size == "large" && b.size == "large" && b.form == "pyramid")
                 return {error: `A large box cannot be ontop a large pyramid`};
 
         // Small objects cannot support large objects. 
-        if(memberOf(rel, ["inside","ontop"]) && x.size == "large" && y.size == "small")
+        if(memberOf(rel, ["inside","ontop"]) && a.size == "large" && b.size == "small")
             return {error: `A large object cannot be $(rel) a small one`};
 
         return {error: undefined}; // Reaching here means that no physical law is violated.
@@ -242,45 +242,81 @@ class Interpreter {
     interpretSimpleObject(obj : SimpleObject) : ObjectSemantics {
         let matched : ObjectSemantics = []; // output (the matched objects to be returned)
 
-        // Returns true if 2 simple objects have the same properties. 
-        function same(x : SimpleObject, y : SimpleObject) : boolean {
-            return x.form == y.form && x.color == y.color && x.size == y.size;
-        }
         // Get all objects available in the world.
         let all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
         if(this.world.holding)
             all_objects.push(this.world.holding);
 
+        // Returns true if 2 simple objects have the same properties. 
+        function isMatched(x : SimpleObject) : boolean {
+            return (obj.form  == "anyform" || obj.form  == x.form) &&
+                   (obj.size  == null      || obj.size  == x.size) &&
+                   (obj.color == null      || obj.color == x.color);
+        }
         // Find matching objects in the world.
-        Object.keys(this.world.objects).forEach(function(id) {
-            if(same(obj, this.world.objects[id])) matched.push(id);
+        let defined_objects = this.world.objects;
+        Object.keys(defined_objects).forEach(function(id) {
+            if(all_objects.indexOf(id) < 0) return; // the object must be in the stacks
+            if(isMatched(defined_objects[id])) matched.push(id);
         });
         return matched;
     }
 
     /** Returns an interpretation for a relative object. */
     interpretRelativeObject(obj : RelativeObject) : ObjectSemantics {
+        let stacks  : string[][] = this.world.stacks;
         let matched : ObjectSemantics = []; // output (the matched objects to be returned)
+        
+        // Interpret components of a relative object.
+        let location : LocationSemantics = this.interpretLocation(obj.location);
+        let objectsA : ObjectSemantics = this.interpretObject(obj.object);
+        let objectsB : ObjectSemantics = location.entity.object;
+        let relation : string = location.relation;
 
-        return [];
-        // obj.location;
-        // obj.object
+        // Returns the x-y coordinate of an object in the stacks.
+        function coordinate(obj : string) : {x : number, y : number} {
+            for(let i : number = 0; i < stacks.length; ++i) {
+                let j : number = stacks[i].indexOf(obj);
+                if(j > -1) return {"x" : i, "y" : j};
+            }
+            return {"x" : -1, "y" : -1}; // this should never occur
+        }
+        // Check if rel(a,b) is a true propositional logic formula.
+        function checkRelation(rel : string, a : string, b : string) : boolean {
+            let coorA = coordinate(a);
+            let coorB = coordinate(b);
+            if(rel == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
+            if(rel == "inside"  && coorA.y == coorB.y + 1) return true;
+            if(rel == "ontop"   && coorA.y == coorB.y + 1) return true;
+            if(rel == "under"   && coorA.y < coorB.y) return true;
+            if(rel == "above"   && coorA.y > coorB.y) return true;
+            if(rel == "leftof"  && coorA.x < coorB.x) return true;
+            if(rel == "rightof" && coorA.x > coorB.x) return true;
+            return false;
+        }
+        // Actual interpretation.
+        for(let a of objectsA) {
+            for(let b of objectsB) {
+                if(this.validate(a,b,relation).error) continue;
+                if(checkRelation(relation,a,b)) matched.push(a);
+            }
+        }
+        return matched;
     }
 }
-
 /*******************************************************************************
 TODO:
-- Throw runtime errors everywhere if interpretation errors occur.
-    // the => any => entity1.object.length == 1 
-    // the => all => entity1.object.length == 1 AND entity2.object.length == 1
-    // the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
-    // any => the => entity2.object.length == 1
-    // any => all => ???
-    // any => any => ??? 
-    // all => the => ???
-    // all => any => ???
-    // all => all => ???
-    // #################################################################################################
-    // Relation = support(ontop, under, above, inside), leftof, rightof, beside
-    // #################################################################################################
+- Quantifiers:
+    the => any => entity1.object.length == 1 
+    the => all => entity1.object.length == 1 AND entity2.object.length == 1
+    the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
+    any => the => entity2.object.length == 1
+    any => all => ???
+    any => any => ??? 
+    all => the => ???
+    all => any => ???
+    all => all => ???
+- Relations:
+    support(ontop, under, above, inside), leftof, rightof, beside
+- Make sure that the matched objects actually exist in the stacks (all_objects)
 *******************************************************************************/
