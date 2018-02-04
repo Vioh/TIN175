@@ -166,10 +166,11 @@ class Interpreter {
 
 
 
-    interpretObject(obj: Object): ObjectSemantics {
+  interpretObject(obj: Object): ObjectSemantics {
         try {
             let result: ObjectSemantics = [];
             let items: { [s: string]: SimpleObject } = this.world.objects;
+
             //function to compare size of two SimpleObject
             let size = function (x: SimpleObject, y: SimpleObject): boolean {
                 return ((x.size && x.size == y.size) || (!x.size));
@@ -191,9 +192,11 @@ class Interpreter {
                         }
                     }
                 }
+                if(obj.form == "floor")
+                    result.push("floor");
             }
             else if (obj instanceof RelativeObject) {
-
+                //console.log("Nickey");
                 //variable declaration
                 let stackPositions: Dictionary<string, number> = new Dictionary(); //to keep stack position of an object
                 let indexPositions: Dictionary<string, number> = new Dictionary(); //to keep the index position of an object in a stack
@@ -203,7 +206,7 @@ class Interpreter {
                 let stackPosLocation: number | undefined;
                 let indexPosKey: number | undefined;
                 let indexPosLocation: number | undefined;
-
+                
                 //loading the dictionaries based on the current world state
                 this.world.stacks.forEach(function (items, stackPos) {
                     items.forEach(function (item, indexPos) {
@@ -217,22 +220,24 @@ class Interpreter {
                     indexPosKey = indexPositions.getValue(key);
                     let isValid: boolean = true;
                     location.entity.object.forEach(function (locationKey) {
-                        stackPosLocation = stackPositions.getValue(locationKey);
-                        indexPosLocation = indexPositions.getValue(locationKey);
-                        if (stackPosKey && stackPosLocation && indexPosKey && indexPosLocation) {
+                        stackPosLocation = (locationKey != "floor") ? stackPositions.getValue(locationKey) : stackPosKey;
+                        indexPosLocation = (locationKey != "floor") ? indexPositions.getValue(locationKey) : -1;
+                        if (stackPosKey != undefined && stackPosLocation != undefined && indexPosKey != undefined && indexPosLocation != undefined) {
                             switch (location.relation) {
-                                case "ontopof":
+                                case "ontop":
                                 case "inside":
                                     if (stackPosKey == stackPosLocation && indexPosLocation + 1 == indexPosKey) {
-                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) != -1)
+                                        //console.log(location.entity.quantifier + "/" + result.indexOf(key));
+                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) == -1)
                                             result.push(key);
                                         else if (location.entity.quantifier == "all")
                                             throw 'Things can only be $(location.relation) exactly one object';
                                     }
+                                    //console.log(result);
                                     break;
                                 case "leftof":
                                     if (stackPosKey < stackPosLocation) {
-                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) != -1)
+                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) == -1)
                                             result.push(key);
                                     }
                                     else
@@ -240,7 +245,7 @@ class Interpreter {
                                     break;
                                 case "rightof":
                                     if (stackPosKey > stackPosLocation) {
-                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) != -1)
+                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) == -1)
                                             result.push(key);
                                     }
                                     else
@@ -248,15 +253,15 @@ class Interpreter {
                                     break;
                                 case "under":
                                     if (stackPosKey == stackPosLocation && indexPosKey < indexPosLocation) {
-                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) != -1)
+                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) == -1)
                                             result.push(key);
                                     }
                                     else
                                         isValid = false;
                                     break;
                                 case "above":
-                                    if (stackPosKey == stackPosLocation && indexPosKey > indexPosLocation && result.indexOf(key) == -1) {
-                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) != -1)
+                                    if (stackPosKey == stackPosLocation && indexPosKey > indexPosLocation) {
+                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) == -1)
                                             result.push(key);
                                     }
                                     else
@@ -264,7 +269,7 @@ class Interpreter {
                                     break;
                                 case "beside":
                                     if (stackPosKey == stackPosLocation - 1 || stackPosKey == stackPosLocation + 1) {
-                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) != -1)
+                                        if ((location.entity.quantifier == "any" || location.entity.quantifier == "the") && result.indexOf(key) == -1)
                                             result.push(key);
                                     }
                                     else
