@@ -17,6 +17,7 @@ possible interpretations. The core interpretation function ("interpretCommand")
 should produce a single itnerpretation for a single command.
 ********************************************************************************/
 
+import Set from "./lib/typescript-collections/src/lib/Set";
 import {WorldState} from "./World";
 import {
     ShrdliteResult,
@@ -89,7 +90,7 @@ class Interpreter {
 
     /** Returns an interpretation for the move command. */
     interpretMove(cmd : MoveCommand) : CommandSemantics {
-        let errors : string[] = [];
+        let errors : Set<string> = new Set<string>();
         let conjunctions : Conjunction[] = [];
         
         // Interpret the components of the MoveCommand.
@@ -106,14 +107,14 @@ class Interpreter {
             for(let b of ent2.object) {
                 let error = this.validate(a, b, location.relation).error;
                 if(error) // physical law violation
-                    errors.push(error);
+                    errors.add(error);
                 else conjunctions.push(new Conjunction([
                     new Literal(location.relation, [a, b])
                 ]));
         }}
         // TODO: is it necessary to merge all errors?
         if(conjunctions.length == 0)
-            throw errors.join(" ; "); // merge all errors into one
+            throw errors.toArray().join(" ; "); // merge all errors into one
         else return new DNFFormula(conjunctions);
     }
     
@@ -122,14 +123,17 @@ class Interpreter {
         let ent : EntitySemantics = this.interpretEntity(cmd.entity);
 
         // Error handlings for all the quantifiers.
-        if(ent.object.length == 0) throw `Couldn't find any matching object`;
+        if(ent.object.length == 0) 
+            throw `Couldn't find any matching object`;
+        if(ent.object.indexOf("floor") > -1)
+            throw `I cannot take the floor`;
         if(ent.object.length != 1) {
             if(ent.quantifier == "the") throw `Found too many matching objects`;
             if(ent.quantifier == "all") throw `I cannot take more than one object`;
         }
         // Create conjunctions for the interpreting.
         let conjunctions : Conjunction[] = [];
-        for(let x of ent.object)
+        for(let x of ent.object) 
             conjunctions.push(new Conjunction([
                 new Literal("holding", [x])
             ]));
@@ -138,7 +142,7 @@ class Interpreter {
 
     /** Returns an interpretation for the drop command. */
     interpretDrop(cmd : DropCommand) : CommandSemantics {
-        let errors : string[] = [];
+        let errors : Set<string> = new Set<string>();
         let conjunctions : Conjunction[] = [];
         let location : LocationSemantics = this.interpretLocation(cmd.location);
         let ent : EntitySemantics = location.entity;
@@ -153,36 +157,38 @@ class Interpreter {
         for(let x of ent.object) {
             let error = this.validate(this.world.holding, x, location.relation).error;
             if(error) // physical law violation
-                errors.push(error);
+                errors.add(error);
             else conjunctions.push(new Conjunction([
                 new Literal(location.relation, [this.world.holding, x])
             ]));
         }
         // TODO: is it necessary to merge all errors?
         if(conjunctions.length == 0)
-            throw errors.join(" ; "); // merge all errors into one
+            throw errors.toArray().join(" ; "); // merge all errors into one
         else return new DNFFormula(conjunctions);
     }
 
     /** Validate and returns an error message if a physical law is violated.  */
     validate(obj1 : string, obj2 : string, rel : string) : {error?: string} {
+        let floor : SimpleObject = new SimpleObject("floor", null, null);
 
         // Returns true if str is a member of the specified array.
         function memberOf(str : string, arr : string[]) : boolean {
             return arr.indexOf(str) > -1;
         }
         // Find the actual objects in the world.
-        let a : SimpleObject = this.world.objects.obj1;
-        let b : SimpleObject = this.world.objects.obj2;
+        let a : SimpleObject = (obj1 == "floor")? floor : this.world.objects[obj1];
+        let b : SimpleObject = (obj2 == "floor")? floor : this.world.objects[obj2];
 
         // Test physical laws relating to the floor.
         if(a.form == "floor")
             return {error: "I cannot take the floor"};
         if(b.form == "floor" && memberOf(rel, ["under","leftof","rightof","beside","inside"]))
-            return {error: `Nothing can be $(rel) the floor.`};
+            return {error: `Nothing can be ${rel} the floor.`};
 
+        // TODO: Should this testing be done here or before the validation???
         // The command must refer to 2 distinct objects in the world.
-        if(obj1 == obj2) return {error: `Nothing can be $(rel) itself`};
+        if(obj1 == obj2) return {error: `Nothing can be ${rel} itself`};
 
         // A ball can be on top of ONLY the floor (otherwise they roll away).
         if(a.form == "ball" && b.form != "floor" && rel == "ontop")
@@ -192,29 +198,29 @@ class Interpreter {
         if(a.form == "ball" && rel == "under")
             return {error: `A ball cannot be under anything`};
         if(b.form == "ball" && memberOf(rel, ["ontop","above"]))
-            return {error: `Nothing can be $(rel) a ball`};
+            return {error: `Nothing can be ${rel} a ball`};
 
         // Objects are "inside" boxes, but "ontop" of other objects
         if(b.form != "box" && rel == "inside")
-            return {error: `Nothing can be inside a $(y.form)`};
+            return {error: `Nothing can be inside a ${b.form}`};
         if(b.form == "box" && rel == "ontop")
             return {error: `Nothing can be ontop a box`};
 
         // Boxes cannot contain pyramids, planks or boxes of the same size.
         if(memberOf(a.form, ["pyramid","plank","box"]) && b.form == "box" && rel == "inside")
-            if(a.size == b.size) return {error: `A $(a.form) cannot be inside a box of the same size`};
+            if(a.size == b.size) return {error: `A ${a.form} cannot be inside a box of the same size`};
 
         if(a.form == "box" && memberOf(b.form, ["pyramid","brick"]) && rel == "ontop")
             // Small boxes cannot be supported by small bricks or pyramids.
             if(a.size == "small" && b.size == "small")
-                return {error: `A small box cannot be ontop a small $(y.form)`};
+                return {error: `A small box cannot be ontop a small ${b.form}`};
             // Large boxes cannot be supported by large pyramids.
             if(a.size == "large" && b.size == "large" && b.form == "pyramid")
                 return {error: `A large box cannot be ontop a large pyramid`};
 
         // Small objects cannot support large objects. 
         if(memberOf(rel, ["inside","ontop"]) && a.size == "large" && b.size == "small")
-            return {error: `A large object cannot be $(rel) a small one`};
+            return {error: `A large object cannot be ${rel} a small one`};
 
         return {error: undefined}; // Reaching here means that no physical law is violated.
     }
@@ -249,9 +255,13 @@ class Interpreter {
 
         // Returns true if 2 simple objects have the same properties. 
         function isMatched(x : SimpleObject) : boolean {
-            return (obj.form  == "anyform" || obj.form  == x.form) &&
-                   (obj.size  == null      || obj.size  == x.size) &&
-                   (obj.color == null      || obj.color == x.color);
+            return (obj.form  == "anyform" || obj.form  == x.form) 
+                    && (obj.size  == null  || obj.size  == x.size)
+                    && (obj.color == null  || obj.color == x.color);
+        }
+        if(obj.form == "floor") {
+            matched.push("floor");
+            return matched;
         }
         // Find matching objects in the world.
         let defined_objects = this.world.objects;
@@ -305,7 +315,7 @@ class Interpreter {
     }
 }
 /*******************************************************************************
-TODO:
+TODO: Check all the TODOs in this file!!!
 - Quantifiers:
     the => any => entity1.object.length == 1 
     the => all => entity1.object.length == 1 AND entity2.object.length == 1
@@ -319,4 +329,6 @@ TODO:
 - Relations:
     support(ontop, under, above, inside), leftof, rightof, beside
 - Make sure that the matched objects actually exist in the stacks (all_objects)
+- Failed test cases: 30, 39
+- Problems with test cases: 3, 16
 *******************************************************************************/
