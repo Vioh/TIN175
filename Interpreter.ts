@@ -74,6 +74,11 @@ export function interpret(parses : ShrdliteResult[], world : WorldState) : Shrdl
 // ===============================================================================================
 // ===============================================================================================
 
+/** Helper function that returns true if needle is in the haystack. */
+function memberOf(needle : string, haystack : string[]) : boolean {
+    return haystack.indexOf(needle) > -1;
+}
+
 /** The core interpretation class. */
 class Interpreter {
     constructor(
@@ -82,101 +87,118 @@ class Interpreter {
 
     /** Returns an interpretation (DNF formula) of a command. */
     public interpretCommand(cmd : Command) : CommandSemantics {
-        if(cmd instanceof MoveCommand) return this.interpretMove(cmd);
-        if(cmd instanceof TakeCommand) return this.interpretTake(cmd);
-        if(cmd instanceof DropCommand) return this.interpretDrop(cmd);
+        
+        if(cmd instanceof MoveCommand) {
+            let loc  : LocationSemantics = this.interpretLocation(cmd.location);
+            let entA : EntitySemantics = this.interpretEntity(cmd.entity);
+            let entB : EntitySemantics = loc.entity;
+            return this.handleQuantifiers(entA.object, entB.object, entA.quantifier, entB.quantifier, loc.relation);
+        }
+        if(cmd instanceof DropCommand) {
+            let loc : LocationSemantics = this.interpretLocation(cmd.location);
+            let ent : EntitySemantics = loc.entity;
+            if(!this.world.holding) throw `I'm not holding anything`;
+            return this.handleQuantifiers([this.world.holding], ent.object, "any", ent.quantifier, loc.relation);
+        }
+        if(cmd instanceof TakeCommand) {
+            let conjunctions : Conjunction[] = [];
+            let ent : EntitySemantics = this.interpretEntity(cmd.entity);
+
+            // Error handlings for all the quantifiers.
+            if(ent.object.length == 0) throw `Couldn't find any matching object`;
+            if(ent.object.indexOf("floor") > -1) throw `I cannot take the floor`;
+            if(ent.object.length != 1) {
+                if(ent.quantifier == "the") throw `Found too many matching objects`;
+                if(ent.quantifier == "all") throw `I cannot take more than one object`;
+            }
+            // Create conjunctions for the interpreting.
+            for(let x of ent.object) 
+                conjunctions.push(new Conjunction([new Literal("holding", [x])]));
+            return new DNFFormula(conjunctions);
+        }
         throw "Unknown command";
     }
 
-    /** Returns an interpretation for the move command. */
-    interpretMove(cmd : MoveCommand) : CommandSemantics {
-        let errors : Set<string> = new Set<string>();
-        let conjunctions : Conjunction[] = [];
+    /** Main interpretation method that takes the quantifiers into account. */
+    handleQuantifiers (
+        objectsA : string[],   // set of all matching objects (called A)
+        objectsB : string[],   // set of all matching locations (called B)
+        quanA    : string,     // quantifier for A
+        quanB    : string,     // quantifier for B
+        rel      : string,     // spatial relation between A and B
+    ) : DNFFormula {
         
-        // Interpret the components of the MoveCommand.
-        let location : LocationSemantics = this.interpretLocation(cmd.location);
-        let ent1 : EntitySemantics = this.interpretEntity(cmd.entity);
-        let ent2 : EntitySemantics = location.entity;
-
-        // Pre-processing and throw errors if necessary. 
-        if(ent1.object.length == 0) throw `Couldn't find any matching object`;
-        if(ent2.object.length == 0) throw `Couldn't find any matching destination`;
-
-        // Interpret using the semantics of the "any" quantifier.
-        for(let a of ent1.object) {
-            for(let b of ent2.object) {
-                let error = this.validate(a, b, location.relation).error;
-                if(error) // physical law violation
-                    errors.add(error);
-                else conjunctions.push(new Conjunction([
-                    new Literal(location.relation, [a, b])
-                ]));
-        }}
-        // TODO: is it necessary to merge all errors?
-        if(conjunctions.length == 0)
-            throw errors.toArray().join(" ; "); // merge all errors into one
-        else return new DNFFormula(conjunctions);
-    }
-    
-    /** Returns an interpretation for the take command. */
-    interpretTake(cmd : TakeCommand) : CommandSemantics {
-        let ent : EntitySemantics = this.interpretEntity(cmd.entity);
-
-        // Error handlings for all the quantifiers.
-        if(ent.object.length == 0) 
-            throw `Couldn't find any matching object`;
-        if(ent.object.indexOf("floor") > -1)
-            throw `I cannot take the floor`;
-        if(ent.object.length != 1) {
-            if(ent.quantifier == "the") throw `Found too many matching objects`;
-            if(ent.quantifier == "all") throw `I cannot take more than one object`;
-        }
-        // Create conjunctions for the interpreting.
+        let errors : Set<string> = new Set<string>(); // set prevents duplicating errors
         let conjunctions : Conjunction[] = [];
-        for(let x of ent.object) 
-            conjunctions.push(new Conjunction([
-                new Literal("holding", [x])
-            ]));
+
+        // Pre-processing of the quantifiers, and throw errors if necessary.
+        if(objectsA.length == 0) throw `Couldn't find any matching object`;
+        if(objectsB.length == 0) throw `Couldn't find any matching destination`;
+        if(quanA == "the" && objectsA.length > 1) 
+            throw `Too many matching objects for "the" quantifier`;
+        if(quanB == "the" && objectsB.length > 1) 
+            throw `Too many matching destinations for "the" quantifier`;
+        if(memberOf(rel, ["ontop", "inside"])) {
+            if(quanB == "all" && objectsB.length > 1 && objectsB[0] != "floor")
+                throw `Things can only be ${rel} exactly one object`;
+            if(quanA == "all" && objectsA.length > 1) throw `Only 1 thing can be ${rel} another object`;
+        }
+        // Interpret when both quantifiers are "all".
+        if(quanA == "all" && quanB == "all") {
+            let literals : Literal[] = [];
+            objectsA.forEach((a) => {
+                objectsB.forEach((b) => {
+                    let err = this.validate(rel,a,b).error;
+                    if(err) errors.add(err); // physical law violation
+                    else literals.push(new Literal(rel,[a,b]));
+                });
+            });
+            conjunctions.push(new Conjunction(literals));
+        }
+        // Interpret when only the 1st quantifier is "all".
+        else if(quanA == "all") {
+            objectsB.forEach((b) => {
+                let literals : Literal[] = [];
+                objectsA.forEach((a) => {
+                    let err = this.validate(rel,a,b).error;
+                    if(err) errors.add(err); // physical law violation
+                    else literals.push(new Literal(rel,[a,b]));
+                });
+                conjunctions.push(new Conjunction(literals));
+            });
+        }
+        // Interpret when only the 2nd quantifier is "all". 
+        else if(quanB == "all") {
+            objectsA.forEach((a) => {
+                let literals : Literal[] = [];
+                objectsB.forEach((b) => {
+                    let err = this.validate(rel,a,b).error;
+                    if(err) errors.add(err); // physical law violation
+                    else literals.push(new Literal(rel,[a,b]));
+                });
+                conjunctions.push(new Conjunction(literals));
+            });
+        }
+        // Interpret when none of the quantifiers are "all"
+        else {
+            objectsA.forEach((a) => {
+                let literals : Literal[] = [];
+                objectsB.forEach((b) => {
+                    let err = this.validate(rel,a,b).error;
+                    if(err) errors.add(err); // physical law violation
+                    else conjunctions.push(new Conjunction([new Literal(rel,[a,b])]));
+                });
+            });
+        }
+        // Output the DNFFormula, or throw an error if there are no conjunctions.
+        if(conjunctions.length == 0)
+            throw errors.toArray().join("; "); // merge all errors into one
         return new DNFFormula(conjunctions);
     }
 
-    /** Returns an interpretation for the drop command. */
-    interpretDrop(cmd : DropCommand) : CommandSemantics {
-        let errors : Set<string> = new Set<string>();
-        let conjunctions : Conjunction[] = [];
-        let location : LocationSemantics = this.interpretLocation(cmd.location);
-        let ent : EntitySemantics = location.entity;
-
-        // Intial error handlings.
-        if(!this.world.holding)
-            throw `I'm not holding anything`;
-        if(ent.object.length == 0) 
-            throw `Couldn't find any matching destination`;
-
-        // Interpret using the semantics of the "any" quantifier.
-        for(let x of ent.object) {
-            let error = this.validate(this.world.holding, x, location.relation).error;
-            if(error) // physical law violation
-                errors.add(error);
-            else conjunctions.push(new Conjunction([
-                new Literal(location.relation, [this.world.holding, x])
-            ]));
-        }
-        // TODO: is it necessary to merge all errors?
-        if(conjunctions.length == 0)
-            throw errors.toArray().join(" ; "); // merge all errors into one
-        else return new DNFFormula(conjunctions);
-    }
-
     /** Validate and returns an error message if a physical law is violated.  */
-    validate(obj1 : string, obj2 : string, rel : string) : {error?: string} {
+    validate(rel : string, obj1 : string, obj2 : string) : {error?: string} {
         let floor : SimpleObject = new SimpleObject("floor", null, null);
-
-        // Returns true if str is a member of the specified array.
-        function memberOf(str : string, arr : string[]) : boolean {
-            return arr.indexOf(str) > -1;
-        }
-        // Find the actual objects in the world.
         let a : SimpleObject = (obj1 == "floor")? floor : this.world.objects[obj1];
         let b : SimpleObject = (obj2 == "floor")? floor : this.world.objects[obj2];
 
@@ -223,18 +245,6 @@ class Interpreter {
             return {error: `A large object cannot be ${rel} a small one`};
 
         return {error: undefined}; // Reaching here means that no physical law is violated.
-    }
-
-    /** Returns an interpretation for an entity. */
-    interpretEntity(ent : Entity) : EntitySemantics {
-        let obj : ObjectSemantics = this.interpretObject(ent.object);
-        return { "quantifier" : ent.quantifier, "object" : obj };
-    }
-
-    /** Returns an interpretation for a location. */
-    interpretLocation(loc : Location) : LocationSemantics {
-        let ent : EntitySemantics = this.interpretEntity(loc.entity);
-        return { "relation" : loc.relation, "entity" : ent };
     }
 
     /** Returns an interpretation for an object. */
@@ -319,19 +329,46 @@ class Interpreter {
         }
         return matched;
     }
+
+    /** Returns an interpretation for an entity. */
+    interpretEntity(ent : Entity) : EntitySemantics {
+        let obj : ObjectSemantics = this.interpretObject(ent.object);
+        return { "quantifier" : ent.quantifier, "object" : obj };
+    }
+
+    /** Returns an interpretation for a location. */
+    interpretLocation(loc : Location) : LocationSemantics {
+        let ent : EntitySemantics = this.interpretEntity(loc.entity);
+        return { "relation" : loc.relation, "entity" : ent };
+    }
 }
 /*******************************************************************************
 TODO: Check all the TODOs in this file!!!
+- Make sure that all calls to validate() has the correct order of arguments.
 - Quantifiers:
-    the => any => entity1.object.length == 1 
-    the => all => entity1.object.length == 1 AND entity2.object.length == 1
-    the => the => entity1.object.lenght == 1 AND entity2.object.length == 1
-    any => the => entity2.object.length == 1
-    any => all => ???
-    any => any => ??? 
-    all => the => ???
-    all => any => ???
-    all => all => ???
+    the => the => ent1.length == 1 AND ent2.length == 1
+    the => any => ent1.length == 1
+    any => the => ent2.length == 1
+    any => any => No AND in conjunctions
+    ============================================
+    any => all =>
+        ontop/inside (ent2.length == 1)
+        under/above/leftof/rightof (conjunctions with AND)
+    the => all => ent1.length == 1
+        ontop/inside (ent2.length == 1)
+        under/above/leftof/rightof (conjunctions with AND)
+    all => the => ent2.length == 1
+        floor (conjunctions with AND)
+        ontop/inside (ent2.length == 1)
+        under/above/leftof/rightof (conjunctions with AND)
+    all => any =>
+        ontop/inside (ent2.length == 1)
+        under/above/leftof/rightof (conjunctions with AND)
+    all => all =>
+        ontop/inside (ent1.length > 1)? => Only 1 thing can be ${rel} another object.
+        ontop/inside (ent2.length > 1)? => Things can only be ${rel} exactly one object.
+        else => OK
+        under/above/leftof/rightof (conjunctions with AND)
 - Relations:
     support(ontop, under, above, inside), leftof, rightof, beside
 - Make sure that the matched objects actually exist in the stacks (all_objects)
