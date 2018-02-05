@@ -275,6 +275,8 @@ class Interpreter {
     /** Returns an interpretation for a relative object. */
     interpretRelativeObject(obj : RelativeObject) : ObjectSemantics {
         let stacks  : string[][] = this.world.stacks;
+
+        // TODO: Using set instead of array here for matched?
         let matched : ObjectSemantics = []; // output (the matched objects to be returned)
         
         // Interpret components of a relative object.
@@ -295,13 +297,17 @@ class Interpreter {
         function checkRelation(rel : string, a : string, b : string) : boolean {
             let coorA = coordinate(a);
             let coorB = coordinate(b);
-            if(rel == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
-            if(rel == "inside"  && coorA.y == coorB.y + 1) return true;
-            if(rel == "ontop"   && coorA.y == coorB.y + 1) return true;
-            if(rel == "under"   && coorA.y < coorB.y) return true;
-            if(rel == "above"   && coorA.y > coorB.y) return true;
-            if(rel == "leftof"  && coorA.x < coorB.x) return true;
-            if(rel == "rightof" && coorA.x > coorB.x) return true;
+
+            if(coorA.x == coorB.x) { // both 'a' and 'b' are on the same stack of objects
+                if(rel == "ontop"  && coorA.y == coorB.y + 1) return true;
+                if(rel == "inside" && coorA.y == coorB.y + 1) return true;
+                if(rel == "above"  && coorA.y > coorB.y) return true;
+                if(rel == "under"  && coorA.y < coorB.y) return true;
+            } else { // 'a' and 'b' are on 2 different stacks of objects
+                if(rel == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
+                if(rel == "leftof"  && coorA.x < coorB.x) return true;
+                if(rel == "rightof" && coorA.x > coorB.x) return true;
+            }
             return false;
         }
         // Actual interpretation.
