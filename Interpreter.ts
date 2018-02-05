@@ -256,35 +256,34 @@ class Interpreter {
 
     /** Returns an interpretation for a simple object. */
     interpretSimpleObject(obj : SimpleObject) : ObjectSemantics {
-        let matched : ObjectSemantics = []; // output (the matched objects to be returned)
-
-        // Get all objects available in the world.
-        let all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
-        if(this.world.holding)
-            all_objects.push(this.world.holding);
-
+        if(obj.form == "floor") return ["floor"];     // returns immediately if it's the floor
+        let output : Set<string> = new Set<string>(); // set of matched objects (non-duplicating)
+        
         // Returns true if 2 simple objects have the same properties. 
         function isMatched(x : SimpleObject) : boolean {
             return (obj.form  == "anyform" || obj.form  == x.form) 
                     && (obj.size  == null  || obj.size  == x.size)
                     && (obj.color == null  || obj.color == x.color);
         }
-        if(obj.form == "floor") {
-            matched.push("floor");
-            return matched;
+        // Get all objects available in the world.
+        let all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
+        if(this.world.holding) {
+            all_objects.push(this.world.holding);
         }
         // Find matching objects in the world.
         let defined_objects = this.world.objects;
-        Object.keys(defined_objects).forEach(function(id) {
-            if(all_objects.indexOf(id) < 0) return; // the object must be in the stacks
-            if(isMatched(defined_objects[id])) matched.push(id);
+        Object.keys(defined_objects).forEach(function(key) {
+            // skip if the object (key) is not visible in the world
+            if(memberOf(key, all_objects)) return; 
+            // add to output if the object (key) matches the description
+            if(isMatched(defined_objects[key])) output.add(key);
         });
-        return matched;
+        return output.toArray();
     }
 
     /** Returns an interpretation for a relative object. */
     interpretRelativeObject(obj : RelativeObject) : ObjectSemantics {
-        let stacks  : string[][] = this.world.stacks;
+        let stacks : string[][] = this.world.stacks;
 
         // TODO: Using set instead of array here for matched?
         let matched : ObjectSemantics = []; // output (the matched objects to be returned)
