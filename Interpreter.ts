@@ -98,7 +98,7 @@ class Interpreter {
         // Instead it should call the other interpretation methods for
         // each of its arguments (cmd.entity and/or cmd.location).
         var interpretation : CommandSemantics;
-		interpretEntity(ent : Entity) : EntitySemantics {
+		//interpretEntity(cmd.entity);
 		//cmd.entity
         var all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
         if (this.world.holding) {
@@ -106,36 +106,60 @@ class Interpreter {
         }
 
         if (cmd instanceof MoveCommand) {
-			//get entities instead of picking random 
-            var a = all_objects[Math.floor(Math.random() * all_objects.length)];
-            var b = all_objects[Math.floor(Math.random() * all_objects.length)];
-		
+			//Move command containt an entity and a location
+            //var a = all_objects[Math.floor(Math.random() * all_objects.length)];
+            //var b = all_objects[Math.floor(Math.random() * all_objects.length)];
+		     var entity = intrepretentity(cmd.entity)
+			 var location = intrepretlocation(cmd.location) 
             if (a == b) {
                 throw "Cannot put an object ontop of itself";
             }
+			//if()
             interpretation = new DNFFormula([
                 new Conjunction([ // ontop(a, b) & ontop(b, floor)
-                    new Literal("ontop", [a, b]),
-                    new Literal("ontop", [b, "floor"])
+                    new Literal("ontop", [object, object2]),
+                    new Literal("ontop", [object2, "floor"])
                 ])
             ]);
+			entity.quantifier == 'any'
+			location.relation ==
+			location.entity == ''
+			if(entity.object == "ball" and location.entity == "box")
+			{
+				interpretation = new DNFFormula([
+                new Conjunction([ // ontop(a, b) & ontop(b, floor)
+                    new Literal("ontop", [entity.object, location.entity]),
+                    new Literal("ontop", [location.entity, "floor"])
+                ])
+            ]);
+			}
+			
+				
+			
         }
 
         else if (cmd instanceof TakeCommand) {
-            var a = all_objects[Math.floor(Math.random() * all_objects.length)];
+			// A take command containt an entity
+			if (!this.world.holding) {
+                throw "I'm not holding anything";
+            }
+			
+			var object = intrepretentity(cmd.entity)
             interpretation = new DNFFormula([
                 new Conjunction([ // holding(a)
-                    new Literal("holding", [a])
+                    new Literal("holding", [object])
                 ])
             ]);
         }
 
         else if (cmd instanceof DropCommand) {
+			// A drop command containt a location
+			// interpretLocation(cmd.location);
             if (!this.world.holding) {
                 throw "I'm not holding anything";
             }
             var a = this.world.holding;
-            var b = all_objects[Math.floor(Math.random() * all_objects.length)];
+            var b = interpretLocation(loc : Location);
             if (a == b) {
                 throw "Cannot put an object ontop of itself";
             }
