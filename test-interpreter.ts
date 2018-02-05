@@ -27,7 +27,7 @@ function runTest(testcase : TestCase) : boolean {
     catch(err) {
         console.log("ERROR: Parsing error!", err);
         console.log();
-        return false;
+        return true;
     }
     console.log("Found " + parses.length + " parses");
     console.log();

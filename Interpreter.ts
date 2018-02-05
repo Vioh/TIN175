@@ -208,10 +208,6 @@ class Interpreter {
         if(b.form == "floor" && memberOf(rel, ["under","leftof","rightof","beside","inside"]))
             return {error: `Nothing can be ${rel} the floor.`};
 
-        // TODO: Should this testing be done here or before the validation???
-        // The command must refer to 2 distinct objects in the world.
-        if(obj1 == obj2) return {error: `Nothing can be ${rel} itself`};
-
         // A ball can be on top of ONLY the floor (otherwise they roll away).
         if(a.form == "ball" && b.form != "floor" && rel == "ontop")
             return {error: `A ball can only be ontop the floor`};
@@ -243,6 +239,10 @@ class Interpreter {
         // Small objects cannot support large objects. 
         if(memberOf(rel, ["inside","ontop"]) && a.size == "large" && b.size == "small")
             return {error: `A large object cannot be ${rel} a small one`};
+
+        // TODO: Should this testing be done here or before the validation???
+        // The command must refer to 2 distinct objects in the world.
+        if(obj1 == obj2) return {error: `Nothing can be ${rel} itself`};
 
         return {error: undefined}; // Reaching here means that no physical law is violated.
     }
@@ -300,14 +300,14 @@ class Interpreter {
                 let j : number = stacks[i].indexOf(obj);
                 if(j > -1) return {"x" : i, "y" : j};
             }
-            return {"x" : -1, "y" : -1}; // this should never occur
+            return {"x" : -1, "y" : -1}; // this is for the floor
         }
         // Check if rel(a,b) is a true propositional logic formula.
         function checkRelation(rel : string, a : string, b : string) : boolean {
             let coorA = coordinate(a);
             let coorB = coordinate(b);
 
-            if(coorA.x == coorB.x) { // both 'a' and 'b' are on the same stack of objects
+            if(b == "floor" || coorA.x == coorB.x) { // both 'a' and 'b' are on the same stack of objects
                 if(rel == "ontop"  && coorA.y == coorB.y + 1) return true;
                 if(rel == "inside" && coorA.y == coorB.y + 1) return true;
                 if(rel == "above"  && coorA.y > coorB.y) return true;
@@ -322,7 +322,7 @@ class Interpreter {
         // Actual interpretation.
         for(let a of objectsA) {
             for(let b of objectsB) {
-                if(this.validate(a,b,relation).error) continue;
+                if(this.validate(relation,a,b).error) continue;
                 if(checkRelation(relation,a,b)) matched.push(a);
             }
         }
@@ -343,7 +343,6 @@ class Interpreter {
 }
 /*******************************************************************************
 TODO: Check all the TODOs in this file!!!
-- Make sure that all calls to validate() has the correct order of arguments.
 - Quantifiers:
     the => the => ent1.length == 1 AND ent2.length == 1
     the => any => ent1.length == 1
