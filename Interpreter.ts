@@ -274,7 +274,7 @@ class Interpreter {
         let defined_objects = this.world.objects;
         Object.keys(defined_objects).forEach(function(key) {
             // skip if the object (key) is not visible in the world
-            if(memberOf(key, all_objects)) return; 
+            if(!memberOf(key, all_objects)) return; 
             // add to output if the object (key) matches the description
             if(isMatched(defined_objects[key])) output.add(key);
         });
