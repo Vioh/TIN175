@@ -312,7 +312,8 @@ testCases.push({
 testCases.push({
     world: "small",
     utterance: "put all balls left of a box on the floor",
-    interpretations: ["COME-UP-WITH-YOUR-OWN-INTERPRETATION"]
+    interpretations: ["leftof(LargeWhiteBall,LargeYellowBox) & leftof(SmallBlackBall,LargeYellowBox)",
+                      "ontop(LargeWhiteBall,floor)"]
 });
 
 testCases.push({

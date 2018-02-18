@@ -18,7 +18,8 @@ should produce a single itnerpretation for a single command.
 ********************************************************************************/
 
 import Set from "./lib/typescript-collections/src/lib/Set";
-import {WorldState} from "./World";
+import Dictionary from "./lib/typescript-collections/src/lib/Dictionary";
+import { WorldState } from "./World";
 import {
     ShrdliteResult,
     Command, TakeCommand, DropCommand, MoveCommand,
@@ -49,14 +50,14 @@ type LocationSemantics = {relation : string; entity : EntitySemantics}
  *           with interpretations. Each interpretation is represented by a DNFFormula.
  *           If there's an interpretation error, it throws an error with a string description.
  */
-export function interpret(parses : ShrdliteResult[], world : WorldState) : ShrdliteResult[] {
-    var errors : string[] = [];
-    var interpretations : ShrdliteResult[] = [];
-    var interpreter : Interpreter = new Interpreter(world);
+export function interpret(parses: ShrdliteResult[], world: WorldState): ShrdliteResult[] {
+    var errors: string[] = [];
+    var interpretations: ShrdliteResult[] = [];
+    var interpreter: Interpreter = new Interpreter(world);
     for (var result of parses) {
         try {
-            var intp : DNFFormula = interpreter.interpretCommand(result.parse);
-        } catch(err) {
+            var intp: DNFFormula = interpreter.interpretCommand(result.parse);
+        } catch (err) {
             errors.push(err);
             continue;
         }
@@ -141,7 +142,8 @@ class Interpreter {
         if(memberOf(rel, ["ontop", "inside"])) {
             if(quanB == "all" && objectsB.length > 1 && objectsB[0] != "floor")
                 throw `Things can only be ${rel} exactly one object`;
-            if(quanA == "all" && objectsA.length > 1) throw `Only 1 thing can be ${rel} another object`;
+            if(quanA == "all" && objectsA.length > 1 && objectsB[0] != "floor") 
+                throw `Only 1 thing can be ${rel} another object`;
         }
         // Interpret when both quantifiers are "all".
         if(quanA == "all" && quanB == "all") {
@@ -258,118 +260,109 @@ class Interpreter {
     interpretSimpleObject(obj : SimpleObject) : ObjectSemantics {
         if(obj.form == "floor") return ["floor"];     // returns immediately if it's the floor
         let output : Set<string> = new Set<string>(); // set of matched objects (non-duplicating)
-        
-        // Returns true if 2 simple objects have the same properties. 
-        function isMatched(x : SimpleObject) : boolean {
+
+        // Returns true if x has the same properties as "obj" (which is the object to be interpreted).
+        function matched(x : SimpleObject) : boolean {
             return (obj.form  == "anyform" || obj.form  == x.form) 
                     && (obj.size  == null  || obj.size  == x.size)
                     && (obj.color == null  || obj.color == x.color);
         }
-        // Get all objects available in the world.
-        let all_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
+        // Get all visible objects available in the world.
+        let visible_objects : string[] = Array.prototype.concat.apply([], this.world.stacks);
         if(this.world.holding) {
-            all_objects.push(this.world.holding);
+            visible_objects.push(this.world.holding);
         }
         // Find matching objects in the world.
         let defined_objects = this.world.objects;
         Object.keys(defined_objects).forEach(function(key) {
             // skip if the object (key) is not visible in the world
-            if(!memberOf(key, all_objects)) return; 
+            if(!memberOf(key, visible_objects)) return; 
             // add to output if the object (key) matches the description
-            if(isMatched(defined_objects[key])) output.add(key);
+            if(matched(defined_objects[key])) output.add(key);
         });
         return output.toArray();
     }
 
     /** Returns an interpretation for a relative object. */
     interpretRelativeObject(obj : RelativeObject) : ObjectSemantics {
-        let stacks : string[][] = this.world.stacks;
-
-        // TODO: Using set instead of array here for matched?
-        let matched : ObjectSemantics = []; // output (the matched objects to be returned)
         
-        // Interpret components of a relative object.
+        // Variable declarations.
         let location : LocationSemantics = this.interpretLocation(obj.location);
         let objectsA : ObjectSemantics = this.interpretObject(obj.object);
         let objectsB : ObjectSemantics = location.entity.object;
-        let relation : string = location.relation;
+        let rel      : string = location.relation;
+        let output   : Set<string> = new Set<string>(); // set of matched objects (non-duplicating)
 
-        // Returns the x-y coordinate of an object in the stacks.
-        function coordinate(obj : string) : {x : number, y : number} {
-            for(let i : number = 0; i < stacks.length; ++i) {
-                let j : number = stacks[i].indexOf(obj);
-                if(j > -1) return {"x" : i, "y" : j};
-            }
-            return {"x" : -1, "y" : -1}; // this is for the floor
+        // Define and load a dictionary that maps each object to its location in the world. 
+        let coordinatesTable : Dictionary<string, {x:number, y:number}> = new Dictionary();
+        this.world.stacks.forEach(function(items, x) {
+            items.forEach(function(item, y) {
+                coordinatesTable.setValue(item, {"x": x, "y": y});
+            });
+        });
+        // Returns the coordinates of an object in the world
+        function coordinates(obj : string) : {x:number, y:number} {
+            let coor = coordinatesTable.getValue(obj);
+            if(coor) return coor;
+            return {"x": -1, "y": -1}; // coordiates for the floor
         }
         // Check if rel(a,b) is a true propositional logic formula.
         function checkRelation(rel : string, a : string, b : string) : boolean {
-            let coorA = coordinate(a);
-            let coorB = coordinate(b);
+            let coorA = coordinates(a);
+            let coorB = coordinates(b);
 
-            if(b == "floor" || coorA.x == coorB.x) { // both 'a' and 'b' are on the same stack of objects
+            // Case 1: a and b are on the same stack of objects.
+            if(b == "floor" || coorA.x == coorB.x) { 
                 if(rel == "ontop"  && coorA.y == coorB.y + 1) return true;
                 if(rel == "inside" && coorA.y == coorB.y + 1) return true;
                 if(rel == "above"  && coorA.y > coorB.y) return true;
                 if(rel == "under"  && coorA.y < coorB.y) return true;
-            } else { // 'a' and 'b' are on 2 different stacks of objects
+            } 
+            // Case 2: a and b are on 2 different stacks of objects
+            else {
                 if(rel == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
                 if(rel == "leftof"  && coorA.x < coorB.x) return true;
                 if(rel == "rightof" && coorA.x > coorB.x) return true;
             }
             return false;
         }
-        // Actual interpretation.
-        for(let a of objectsA) {
-            for(let b of objectsB) {
-                if(this.validate(relation,a,b).error) continue;
-                if(checkRelation(relation,a,b)) matched.push(a);
+
+        // Interpretation using the semantics of "all" quantifier.
+        if(location.entity.quantifier == "all") {
+            for(let a of objectsA) {
+                let valid : boolean = true;
+                for(let b of objectsB) {
+                    if(this.validate(rel,a,b).error || !checkRelation(rel,a,b)) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if(valid) output.add(a);
             }
         }
-        return matched;
+        // Interpretation using the semantics of "the" or "any" quantifier.
+        else {
+            for(let a of objectsA) {
+                for(let b of objectsB) {
+                    if(!this.validate(rel,a,b).error && checkRelation(rel,a,b)) {
+                        output.add(a);
+                        break;
+                    }
+                }
+            }
+        }
+        return output.toArray();
     }
 
     /** Returns an interpretation for an entity. */
-    interpretEntity(ent : Entity) : EntitySemantics {
-        let obj : ObjectSemantics = this.interpretObject(ent.object);
-        return { "quantifier" : ent.quantifier, "object" : obj };
+    interpretEntity(ent: Entity): EntitySemantics {
+        let obj: ObjectSemantics = this.interpretObject(ent.object);
+        return { "quantifier": ent.quantifier, "object": obj };
     }
 
     /** Returns an interpretation for a location. */
-    interpretLocation(loc : Location) : LocationSemantics {
-        let ent : EntitySemantics = this.interpretEntity(loc.entity);
-        return { "relation" : loc.relation, "entity" : ent };
+    interpretLocation(loc: Location): LocationSemantics {
+        let ent: EntitySemantics = this.interpretEntity(loc.entity);
+        return { "relation": loc.relation, "entity": ent };
     }
 }
-/*******************************************************************************
-TODO: Check all the TODOs in this file!!!
-- Quantifiers:
-    the => the => ent1.length == 1 AND ent2.length == 1
-    the => any => ent1.length == 1
-    any => the => ent2.length == 1
-    any => any => No AND in conjunctions
-    ============================================
-    any => all =>
-        ontop/inside (ent2.length == 1)
-        under/above/leftof/rightof (conjunctions with AND)
-    the => all => ent1.length == 1
-        ontop/inside (ent2.length == 1)
-        under/above/leftof/rightof (conjunctions with AND)
-    all => the => ent2.length == 1
-        floor (conjunctions with AND)
-        ontop/inside (ent2.length == 1)
-        under/above/leftof/rightof (conjunctions with AND)
-    all => any =>
-        ontop/inside (ent2.length == 1)
-        under/above/leftof/rightof (conjunctions with AND)
-    all => all =>
-        ontop/inside (ent1.length > 1)? => Only 1 thing can be ${rel} another object.
-        ontop/inside (ent2.length > 1)? => Things can only be ${rel} exactly one object.
-        else => OK
-        under/above/leftof/rightof (conjunctions with AND)
-- Relations:
-    support(ontop, under, above, inside), leftof, rightof, beside
-- Make sure that the matched objects actually exist in the stacks (all_objects)
-- Failed test cases: 30, 39
-- Problems with test cases: 3, 16
-*******************************************************************************/
