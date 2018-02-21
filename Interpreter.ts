@@ -242,7 +242,6 @@ class Interpreter {
         if(memberOf(rel, ["inside","ontop"]) && a.size == "large" && b.size == "small")
             return {error: `A large object cannot be ${rel} a small one`};
 
-        // TODO: Should this testing be done here or before the validation???
         // The command must refer to 2 distinct objects in the world.
         if(obj1 == obj2) return {error: `Nothing can be ${rel} itself`};
 
