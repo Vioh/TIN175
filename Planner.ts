@@ -51,7 +51,7 @@ class ShrdliteGraph implements Graph<ShrdliteNode> {
         return a.compareTo(b);
     }
     successors(current : ShrdliteNode) : Successor<ShrdliteNode>[] {
-        let outputs = [];
+        let outputs : Successor<ShrdliteNode>[] = [];
         let actions = ["l","r","p","d"]; // left, right, pick, drop
         actions.forEach((action) => {
             let next : ShrdliteNode | null = current.neighbor(action);
@@ -109,17 +109,18 @@ class ShrdliteNode {
             let dest = (ypos == -1)? "floor" : stacks[xpos][ypos];
             if(!holding || this.isValidDrop(holding, dest)) return null;
             let newState = this.clone(this.state);
+            if(!newState.holding) return null; // dummy check to pass compiler's type checker
             newState.stacks[xpos].push(newState.holding);
             newState.holding = null;
             return new ShrdliteNode(newState, this.state.objects);
         }
         return null;
     }
-    private stringify(input) {
-        if(!Array.isArray(input)) return input;
-        let output = input.map(this.stringify);
-        output = output.join(",");
-        return `[${output}]`
+    private stringify(stacks : string[][]) : string {
+        let output : string[] = [];
+        for(let stack of stacks)
+            output.push(`[${stack.join(",")}]`);
+        return `[${output.join(",")}]`;
     }
     private clone(state : WorldState) : WorldState {
         return {
