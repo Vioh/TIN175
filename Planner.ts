@@ -7,7 +7,7 @@ into a state compatible with the user's command, i.e. to achieve what the user w
 import {WorldState} from "./World";
 import {Successor, Graph, SearchResult} from "./Graph";
 import {aStarSearch} from "./AStarSearch";
-import {ShrdliteResult, DNFFormula, Literal, SimpleObject} from "./Types";
+import {ShrdliteResult, DNFFormula, Conjunction, Literal, SimpleObject} from "./Types";
 
 /** 
  * Top-level driver for the Planner. 
@@ -164,6 +164,62 @@ class ShrdliteNode {
 // ===============================================================================================
 // ===============================================================================================
 
+/** Returns the x-y coordinate of an object in the stacks. */
+function coordinate(obj : string, state : WorldState) : {x : number, y : number} {
+    for(let i : number = 0; i < state.stacks.length; ++i) {
+        let j : number = state.stacks[i].indexOf(obj);
+        if(j > -1) return {"x" : i, "y" : j};
+    }
+    return {"x" : -1, "y" : -1}; // this is for the floor
+}
+
+/** Returns a specialized goal test for a ShrdliteNode */
+function goalTest(interpretation : DNFFormula) : (node : ShrdliteNode) => boolean {
+    return function(node : ShrdliteNode) {
+        for(let conj of interpretation.conjuncts)
+            if(isTrueConj(conj, node.state)) return true;
+        return false;
+    }
+    function isTrueConj(conj : Conjunction, state : WorldState) : boolean {
+        for(let lit of conj.literals)
+            if(!isTrueLiteral(lit, state)) return false;
+        return true;
+    }
+    function isTrueLiteral(lit : Literal, state : WorldState) : boolean {
+        if(lit.args.length == 1) {
+            if(lit.relation == "holding" && lit.args[0] == state.holding) return true;
+        }
+        else if(lit.args.length == 2) {
+            return checkBinaryRelation(lit, state);
+        }
+        return false;
+    }
+    function checkBinaryRelation(lit : Literal, state : WorldState) : boolean {
+        let rel = lit.relation;
+        let coorA = coordinate(lit.args[0], state); // coordinate of object A
+        let coorB = coordinate(lit.args[1], state); // coordinate of object B
+        
+        // Case 1: A and B are on the same stack of objects.
+        if(lit.args[1] == "floor" || coorA.x == coorB.x) {
+            if(rel == "ontop"  && coorA.y == coorB.y + 1) return true;
+            if(rel == "inside" && coorA.y == coorB.y + 1) return true;
+            if(rel == "above"  && coorA.y > coorB.y) return true;
+            if(rel == "under"  && coorA.y < coorB.y) return true;
+        } 
+        // Case 2: a and b are on 2 different stacks of objects
+        else {
+            if(rel == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
+            if(rel == "leftof"  && coorA.x < coorB.x) return true;
+            if(rel == "rightof" && coorA.x > coorB.x) return true;
+        }
+        return false;
+    }
+}
+
+// ===============================================================================================
+// ===============================================================================================
+// ===============================================================================================
+
 class Planner {
     constructor(
         private world : WorldState
@@ -227,3 +283,5 @@ class Planner {
         return plan;
     }
 }
+
+// TODO: Throw errors in plannner at appropriae places!
