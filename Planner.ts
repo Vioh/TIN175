@@ -70,6 +70,7 @@ class ShrdliteNode {
     public state : WorldState;
 
     constructor(state : WorldState) {
+        this.state = state;
         this.id = `${state.arm},${state.holding},${this.stringify(state.stacks)}`;
     }
     public toString() : string {
@@ -105,7 +106,7 @@ class ShrdliteNode {
         }
         if(action == 'd') {
             let dest = (ypos == -1)? "floor" : stacks[xpos][ypos];
-            if(!holding || this.isValidDrop(holding, dest)) return null;
+            if(!holding || !this.isValidDrop(holding, dest)) return null;
             let newState = this.clone(this.state);
             if(!newState.holding) return null; // dummy check to pass compiler's type checker
             newState.stacks[xpos].push(newState.holding);
@@ -223,6 +224,9 @@ function goalTest(interpretation : DNFFormula) : (node : ShrdliteNode) => boolea
 /** Returns a specialized function to compute the heuristics for a ShrdliteNode */
 function heuristics(intp : DNFFormula) : (node : ShrdliteNode) => number {
     return function(node : ShrdliteNode) : number {
+        // let a = true;
+        // if(a) return 0;
+
         let heurs : number[] = intp.conjuncts.map((conj) => heurForConj(conj, node.state));
         return Math.min(...heurs);
     }
@@ -238,13 +242,30 @@ function heuristics(intp : DNFFormula) : (node : ShrdliteNode) => number {
             let numOntop = state.stacks[coor.x].length - coor.y - 1;
             return numOfOper * numOntop;
         }
+        else if(lit.args[1] == "floor") {
+            if(state.holding == lit.args[0]) return 0;
+            let coor = coordinate(lit.args[0], state);
+            let numOntop = state.stacks[coor.x].length - coor.y - 1;
+            return numOfOper * numOntop;
+        }
+        else if(state.holding == lit.args[0]) {
+            if(lit.args[0] == "floor") return 0;
+            let coor = coordinate(lit.args[1], state);
+            let numOntop = state.stacks[coor.x].length - coor.y - 1;
+            return numOfOper * numOntop;
+        }
+        else if(state.holding == lit.args[1]) {
+            let coor = coordinate(lit.args[0], state);
+            let numOntop = state.stacks[coor.x].length - coor.y - 1;
+            return numOfOper * numOntop;
+        }
         if(checkBinaryRelation(lit, state)) return 0; // goal state
         let coorA = coordinate(lit.args[0], state);
         let coorB = coordinate(lit.args[1], state);
         let numOntopA = state.stacks[coorA.x].length - coorA.y - 1;
-        let numOntopB = state.stacks[coorA.x].length - coorA.y - 1;
+        let numOntopB = state.stacks[coorB.x].length - coorB.y - 1;
+        
         if(coorA.x != coorB.x) {
-            if(lit.args[1] == "floor") return numOfOper * numOntopA;
             return numOfOper * (numOntopA + numOntopB);
         } else {
             return numOfOper * Math.min(numOntopA, numOntopB);
@@ -277,4 +298,6 @@ class Planner {
 
 // TODO: Throw errors in plannner at appropriae places!
 // TODO: Test timeout "medium" "put the brick that is to the left of a pyramid in a box"
+// TODO: Interpreter fails "complex" "put any object under all tables"
+// TODO: Ambiguity resolution in Shrdlite.ts
 // leftof, rightof, inside, ontop, under, beside, above, HOLDING
