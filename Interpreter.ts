@@ -148,37 +148,49 @@ class Interpreter {
         // Interpret when both quantifiers are "all".
         if(quanA == "all" && quanB == "all") {
             let literals : Literal[] = [];
+            let valid : boolean = true;
             objectsA.forEach((a) => {
                 objectsB.forEach((b) => {
                     let err = this.validate(rel,a,b).error;
-                    if(err) errors.add(err); // physical law violation
+                    if(err) { // physical law violation
+                        errors.add(err); 
+                        valid = false;
+                    }
                     else literals.push(new Literal(rel,[a,b]));
                 });
             });
-            conjunctions.push(new Conjunction(literals));
+            if(valid) conjunctions.push(new Conjunction(literals));
         }
         // Interpret when only the 1st quantifier is "all".
         else if(quanA == "all") {
             objectsB.forEach((b) => {
                 let literals : Literal[] = [];
+                let valid : boolean = true;
                 objectsA.forEach((a) => {
                     let err = this.validate(rel,a,b).error;
-                    if(err) errors.add(err); // physical law violation
+                    if(err) { // physical law violation
+                        errors.add(err);
+                        valid = false;
+                    }
                     else literals.push(new Literal(rel,[a,b]));
                 });
-                conjunctions.push(new Conjunction(literals));
+                if(valid) conjunctions.push(new Conjunction(literals));
             });
         }
         // Interpret when only the 2nd quantifier is "all". 
         else if(quanB == "all") {
             objectsA.forEach((a) => {
                 let literals : Literal[] = [];
+                let valid : boolean = true;
                 objectsB.forEach((b) => {
                     let err = this.validate(rel,a,b).error;
-                    if(err) errors.add(err); // physical law violation
+                    if(err) {  // physical law violation
+                        errors.add(err);
+                        valid = false;
+                    }
                     else literals.push(new Literal(rel,[a,b]));
                 });
-                conjunctions.push(new Conjunction(literals));
+                if(valid) conjunctions.push(new Conjunction(literals));
             });
         }
         // Interpret when none of the quantifiers are "all"

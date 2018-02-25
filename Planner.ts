@@ -21,10 +21,9 @@ import {ShrdliteResult, DNFFormula, Conjunction, Literal, SimpleObject} from "./
 export function plan(interpretations : ShrdliteResult[], world : WorldState) : ShrdliteResult[] {
     var errors : string[] = [];
     var plans : ShrdliteResult[] = [];
-    var planner : Planner = new Planner(world);
     for (var result of interpretations) {
         try {
-            var theplan : string[] = planner.makePlan(result.interpretation);
+            var theplan : string[] = makePlan(result.interpretation, world);
         } catch(err) {
             errors.push(err);
             continue;
@@ -41,19 +40,160 @@ export function plan(interpretations : ShrdliteResult[], world : WorldState) : S
     }
     return plans;
 }
+/** 
+ * The core planner method.
+ * @param interpretation: The logical interpretation of the user's desired goal. 
+ * @returns: A plan, represented by a list of strings.
+ *           If there's a planning error, it throws an error with a string description.
+ */
+function makePlan(intp : DNFFormula, world : WorldState) : string[] {
+    let start : ShrdliteNode = new ShrdliteNode(world);
+    let result = aStarSearch(new ShrdliteGraph(), start, goalTest(intp), heuristics(intp), 10);
+    if(result.status == "timeout")
+        throw `TIMEOUT! Visited ${result.visited} nodes`;
+    if(result.status == "failure")
+        throw `No path exists from start to goal`;
+    console.log(`Path cost: ${result.path.length}`);
+    return result.path.map((incomingEdge) => incomingEdge.action);
+}
 
-// ===============================================================================================
-// ===============================================================================================
-// ===============================================================================================
+// =======================================================================================
+// HELPER FUNCTIONS ######################################################################
+// =======================================================================================
 
+/** Returns true if the needle string is part of the haystack array. */
+function memberOf(needle : string, haystack : string[]) : boolean {
+    return haystack.indexOf(needle) > -1;
+}
+
+/** Returns a deep clone of the given world state. */
+function deepclone(state : WorldState) : WorldState {
+    return {
+      "stacks"  : JSON.parse(JSON.stringify(state.stacks)),
+      "holding" : state.holding,
+      "arm"     : state.arm,
+      "objects" : state.objects,
+      "examples": [], // examples are not needed for the planer
+    };
+}
+
+/** Returns true if a drop of objA onto objB obeys the physical laws. */
+function isValidDrop(objA : SimpleObject, objB : SimpleObject) : boolean {
+    // Special case => anything can be dropped on the floor.
+    if(objB.form == "floor") return true;
+    // Nothing can be dropped on a ball.
+    if(objB.form == "ball") return false;
+    // A ball can't be dropped on anything else other than a box or the floor.
+    if(objA.form == "ball" && objB.form != "box") return false;
+    // A pyramid/plank/box cannot be dropped into a box of the same size.
+    if(memberOf(objA.form, ["pyramid","plank","box"]) && objB.form == "box" && objA.size == objB.size) return false;
+    // A large object cannot be dropped on a small object.
+    if(objA.size == "large" && objB.size == "small") return false;
+
+    if(objA.form == "box" && memberOf(objB.form, ["pyramid","brick"])) {
+        // A small box cannot be dropped on a small brick/pyramid.
+        if(objA.size == "small" && objB.size == "small") return false;
+        // A large box cannot be dropped on a large pyramid.
+        if(objA.size == "large" && objB.size == "large" && objB.form == "pyramid") return false;
+    }
+    return true; 
+}
+
+/** Returns x-y coordinates of an object on the world's stacks.
+ *  Returns {-1,-1} if the object is the floor. 
+ *  Returns null if the object is not on the world's stacks. */
+function coordinate(obj : string, state : WorldState) : {x : number, y : number} | null {
+    if(obj == "floor") return {"x" : -1, "y" : -1};
+    for(let i : number = 0; i < state.stacks.length; ++i) {
+        let j : number = state.stacks[i].indexOf(obj);
+        if(j > -1) return {"x" : i, "y" : j};
+    }
+    return null;
+}
+
+/** Check if the literal (a unary relation) is true in the given world state. */
+function isValidUnaryRelation(lit : Literal, state : WorldState) : boolean {
+    if(lit.relation == "holding" && state.holding == lit.args[0]) return true;
+    return false;
+}
+
+/** Check if the literal (a binary relation) is true in the given world state. */
+function isValidBinaryRelation(lit : Literal, state : WorldState) : boolean {
+    let coorA : {x:number,y:number} | null = coordinate(lit.args[0], state);
+    let coorB : {x:number,y:number} | null = coordinate(lit.args[1], state);
+    if(!coorA || !coorB) return false; // objects not on the stacks
+    
+    // Case 1: A and B are on the same stack of objects.
+    if(lit.args[1] == "floor" || coorA.x == coorB.x) {
+        if(lit.relation == "ontop"  && coorA.y == coorB.y + 1) return true;
+        if(lit.relation == "inside" && coorA.y == coorB.y + 1) return true;
+        if(lit.relation == "above"  && coorA.y > coorB.y) return true;
+        if(lit.relation == "under"  && coorA.y < coorB.y) return true;
+    } 
+    // Case 2: A and B are on 2 different stacks of objects.
+    else {
+        if(lit.relation == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
+        if(lit.relation == "leftof"  && coorA.x < coorB.x) return true;
+        if(lit.relation == "rightof" && coorA.x > coorB.x) return true;
+    }
+    return false;
+}
+
+// =======================================================================================
+// SHRDLITE NODE AND GRAPH ###############################################################
+// =======================================================================================
+
+/** Shrdlite node which stores a single state of the Shrdlite world. */
+class ShrdliteNode {
+    public id : string;
+    public state : WorldState;
+
+    constructor(state : WorldState) {
+        let stringifiedStacks : string[] = [];
+        for(let stack of state.stacks)
+            stringifiedStacks.push(`[${stack.join(",")}]`);
+        this.id = `${state.arm},${state.holding},[${stringifiedStacks.join(",")}]`;
+        this.state = state;
+    }
+    public toString() : string { return this.id; }
+    public compareTo(other : ShrdliteNode) { return this.id.localeCompare(other.id); }
+
+    /* Returns the next node based on the action (or null if not possible). */
+    public neighbor(action : string) : ShrdliteNode | null {
+        let next = deepclone(this.state);
+        let xpos = next.arm;
+        let ypos = next.stacks[xpos].length - 1;
+
+        if(action == 'l') {
+            if(--next.arm < 0) return null;
+        } else if(action == 'r') {
+            if(++next.arm >= next.stacks.length) return null;
+        } else if(action == 'p') {
+            if(next.holding || ypos < 0) return null;
+            next.holding = next.stacks[xpos][ypos];
+            next.stacks[xpos].splice(ypos, 1);
+        } else if(action == 'd' && next.holding) {
+            let floor : SimpleObject = new SimpleObject("floor", null, null);
+            let objA : SimpleObject = next.objects[next.holding]; 
+            let objB : SimpleObject = (ypos < 0)? floor : next.objects[next.stacks[xpos][ypos]];
+            if(!isValidDrop(objA, objB)) return null;
+            next.stacks[xpos].push(next.holding);
+            next.holding = null;
+        } else {
+            return null;
+        }
+        return new ShrdliteNode(next);
+    }
+}
+
+/** Shrdlite graph which simply acts like an interface to create the nodes. */
 class ShrdliteGraph implements Graph<ShrdliteNode> {
     compareNodes(a : ShrdliteNode, b : ShrdliteNode) : number {
         return a.compareTo(b);
     }
     successors(current : ShrdliteNode) : Successor<ShrdliteNode>[] {
         let outputs : Successor<ShrdliteNode>[] = [];
-        let actions = ["l","r","p","d"]; // left, right, pick, drop
-        actions.forEach((action) => {
+        ["l","r","p","d"].forEach((action) => {
             let next : ShrdliteNode | null = current.neighbor(action);
             if(next) outputs.push({"action": action, "child": next, "cost": 1});
         });
@@ -62,242 +202,95 @@ class ShrdliteGraph implements Graph<ShrdliteNode> {
 }
 
 // ===============================================================================================
-// ===============================================================================================
-// ===============================================================================================
-
-class ShrdliteNode {
-    public id : string;
-    public state : WorldState;
-
-    constructor(state : WorldState) {
-        this.state = state;
-        this.id = `${state.arm},${state.holding},${this.stringify(state.stacks)}`;
-    }
-    public toString() : string {
-        return this.id;
-    }
-    public compareTo(other : ShrdliteNode) {
-        return this.id.localeCompare(other.id);
-    }
-    public neighbor(action : string) : ShrdliteNode | null {
-        let stacks = this.state.stacks;
-        let holding = this.state.holding;
-        let xpos = this.state.arm;
-        let ypos = stacks[xpos].length - 1;
-
-        if(action == 'l') {
-            if(xpos == 0) return null;
-            let newState : WorldState = this.clone(this.state);
-            --newState.arm; // go left one step
-            return new ShrdliteNode(newState);
-        }
-        if(action == 'r') {
-            if(xpos == stacks.length-1) return null;
-            let newState : WorldState = this.clone(this.state);
-            ++newState.arm; // go right one step
-            return new ShrdliteNode(newState);
-        }
-        if(action == 'p') {
-            if(holding || ypos == -1) return null;
-            let newState : WorldState = this.clone(this.state);
-            newState.holding = newState.stacks[xpos][ypos];
-            newState.stacks[xpos].splice(ypos, 1);
-            return new ShrdliteNode(newState);
-        }
-        if(action == 'd') {
-            let dest = (ypos == -1)? "floor" : stacks[xpos][ypos];
-            if(!holding || !this.isValidDrop(holding, dest)) return null;
-            let newState = this.clone(this.state);
-            if(!newState.holding) return null; // dummy check to pass compiler's type checker
-            newState.stacks[xpos].push(newState.holding);
-            newState.holding = null;
-            return new ShrdliteNode(newState);
-        }
-        return null;
-    }
-    private stringify(stacks : string[][]) : string {
-        let output : string[] = [];
-        for(let stack of stacks)
-            output.push(`[${stack.join(",")}]`);
-        return `[${output.join(",")}]`;
-    }
-    private clone(state : WorldState) : WorldState {
-        return {
-            "stacks": JSON.parse(JSON.stringify(state.stacks)),
-            "holding": state.holding,
-            "arm": state.arm,
-            "objects": state.objects,
-            "examples": [], // examples are not needed for the planer
-        };
-    }
-    private isValidDrop(obj1 : string, obj2 : string) : boolean {
-        let floor : SimpleObject = new SimpleObject("floor", null, null);
-        let a : SimpleObject = (obj1 == "floor")? floor : this.state.objects[obj1];
-        let b : SimpleObject = (obj2 == "floor")? floor : this.state.objects[obj2];
-
-        function memberOf(needle : string, haystack : string[]) : boolean {
-            return haystack.indexOf(needle) > -1;
-        }
-        // Special case => anything can be dropped on the floor.
-        if(b.form == "floor") return true;
-        // Nothing can be dropped on a ball.
-        if(b.form == "ball") return false;
-        // A ball can't be dropped on anything else other than a box or the floor.
-        if(a.form == "ball" && b.form != "box") return false;
-        // A pyramid/plank/box cannot be dropped into a box of the same size.
-        if(memberOf(a.form, ["pyramid","plank","box"]) && b.form == "box" && a.size == b.size) return false;
-        // A large object cannot be dropped on a small object.
-        if(a.size == "large" && b.size == "small") return false;
-
-        if(a.form == "box" && memberOf(b.form, ["pyramid","brick"])) {
-            // A small box cannot be dropped on a small brick/pyramid.
-            if(a.size == "small" && b.size == "small") return false;
-            // A large box cannot be dropped on a large pyramid.
-            if(a.size == "large" && b.size == "large" && b.form == "pyramid") return false;
-        }
-        return true; 
-    }
-}
-
-// ===============================================================================================
-// ===============================================================================================
+// GOAL TEST AND HEURISTICS ######################################################################
 // ===============================================================================================
 
-/** Returns the x-y coordinate of an object in the stacks. */
-function coordinate(obj : string, state : WorldState) : {x : number, y : number} {
-    for(let i : number = 0; i < state.stacks.length; ++i) {
-        let j : number = state.stacks[i].indexOf(obj);
-        if(j > -1) return {"x" : i, "y" : j};
-    }
-    return {"x" : -1, "y" : -1}; // this is for the floor
-}
-
-/** Returns true if the literal (binary relation) is true in the world state. */
-function checkBinaryRelation(lit : Literal, state : WorldState) : boolean {
-    let rel = lit.relation;
-    let coorA = coordinate(lit.args[0], state); // coordinate of object A
-    let coorB = coordinate(lit.args[1], state); // coordinate of object B
-    
-    // Case 1: A and B are on the same stack of objects.
-    if(lit.args[1] == "floor" || coorA.x == coorB.x) {
-        if(rel == "ontop"  && coorA.y == coorB.y + 1) return true;
-        if(rel == "inside" && coorA.y == coorB.y + 1) return true;
-        if(rel == "above"  && coorA.y > coorB.y) return true;
-        if(rel == "under"  && coorA.y < coorB.y) return true;
-    } 
-    // Case 2: a and b are on 2 different stacks of objects
-    else {
-        if(rel == "beside"  && Math.abs(coorA.x - coorB.x) == 1) return true;
-        if(rel == "leftof"  && coorA.x < coorB.x) return true;
-        if(rel == "rightof" && coorA.x > coorB.x) return true;
-    }
-    return false;
-}
-
-/** Returns a specialized goal test for a ShrdliteNode */
-function goalTest(interpretation : DNFFormula) : (node : ShrdliteNode) => boolean {
+/** Returns a specialized goal test function */
+function goalTest(intp : DNFFormula) : (node : ShrdliteNode) => boolean {
     return function(node : ShrdliteNode) : boolean {
-        for(let conj of interpretation.conjuncts)
+        for(let conj of intp.conjuncts)
             if(isTrueConj(conj, node.state)) return true;
         return false;
     }
     function isTrueConj(conj : Conjunction, state : WorldState) : boolean {
         for(let lit of conj.literals)
-            if(!isTrueLiteral(lit, state)) return false;
+            if(!isTrueLit(lit, state)) return false;
         return true;
     }
-    function isTrueLiteral(lit : Literal, state : WorldState) : boolean {
-        if(lit.args.length == 1) {
-            if(lit.relation == "holding" && lit.args[0] == state.holding) return true;
-        }
-        else if(lit.args.length == 2) {
-            return checkBinaryRelation(lit, state);
-        }
+    function isTrueLit(lit : Literal, state : WorldState) : boolean {
+        if(lit.args.length == 1)
+            return isValidUnaryRelation(lit, state);
+        if(lit.args.length == 2)
+            return isValidBinaryRelation(lit, state);
         return false;
     }
 }
 
-// ===============================================================================================
-// ===============================================================================================
-// ===============================================================================================
-
-/** Returns a specialized function to compute the heuristics for a ShrdliteNode */
+/** Returns a specialized function to compute the heuristics */
 function heuristics(intp : DNFFormula) : (node : ShrdliteNode) => number {
+    let N : number = 4; // todo: should be readonly
+
     return function(node : ShrdliteNode) : number {
-        // let a = true;
-        // if(a) return 0;
+        return 0;
+        // let heurs : number[] = intp.conjuncts.map((conj) => heurForConj(conj, node.state));
+        // return Math.min(...heurs);
+    }
+    // function heurForConj(conj : Conjunction, state : WorldState) : number {
+    //     let heurs : number[] = conj.literals.map((lit) => heurForLit(lit, state));
+    //     return Math.max(...heurs);
+    // }
+    // function handleUnary(lit : Literal, state : WorldState) : number {
+    //     if(state.holding == lit.args[0]) return 0;
+    //     let coor = coordinate(lit.args[0], state);
+    //     let numOntop = state.stacks[coor.x].length - coor.y - 1;
+    //     return N * numOntop + Math.abs(state.arm-coor.x);
+    // }
+    // function heurForLit(lit : Literal, state : WorldState) : number {
+    //     if(lit.relation == "holding")
+    //         return handleUnary(lit, state);
+    //     let objA : string = lit.args[0];
+    //     let objB : string = lit.args[1];
 
-        let heurs : number[] = intp.conjuncts.map((conj) => heurForConj(conj, node.state));
-        return Math.min(...heurs);
-    }
-    function heurForConj(conj : Conjunction, state : WorldState) : number {
-        let heurs : number[] = conj.literals.map((lit) => heurForLit(lit, state));
-        return Math.max(...heurs);
-    }
-    function heurForLit(lit : Literal, state : WorldState) : number {
-        let numOfOper = 4;
-        if(lit.relation == "holding") {
-            if(state.holding == lit.args[0]) return 0;
-            let coor = coordinate(lit.args[0], state);
-            let numOntop = state.stacks[coor.x].length - coor.y - 1;
-            return numOfOper * numOntop;
-        }
-        else if(lit.args[1] == "floor") {
-            if(state.holding == lit.args[0]) return 0;
-            let coor = coordinate(lit.args[0], state);
-            let numOntop = state.stacks[coor.x].length - coor.y - 1;
-            return numOfOper * numOntop;
-        }
-        else if(state.holding == lit.args[0]) {
-            if(lit.args[0] == "floor") return 0;
-            let coor = coordinate(lit.args[1], state);
-            let numOntop = state.stacks[coor.x].length - coor.y - 1;
-            return numOfOper * numOntop;
-        }
-        else if(state.holding == lit.args[1]) {
-            let coor = coordinate(lit.args[0], state);
-            let numOntop = state.stacks[coor.x].length - coor.y - 1;
-            return numOfOper * numOntop;
-        }
-        if(checkBinaryRelation(lit, state)) return 0; // goal state
-        let coorA = coordinate(lit.args[0], state);
-        let coorB = coordinate(lit.args[1], state);
-        let numOntopA = state.stacks[coorA.x].length - coorA.y - 1;
-        let numOntopB = state.stacks[coorB.x].length - coorB.y - 1;
-        
-        if(coorA.x != coorB.x) {
-            return numOfOper * (numOntopA + numOntopB);
-        } else {
-            return numOfOper * Math.min(numOntopA, numOntopB);
-        }
-    }
+    //     // HOLDING (important to go before FLOOR => if obj1 is held and obj2 is floor)
+    //     if(state.holding == objA || state.holding == objB) {
+    //         return 1; // we at least have to drop it
+    //     }
+    //     // FLOOR
+    //     if(objB == "floor") {
+    //         if(lit.relation == "above") return 0; // already true
+    //         let coor = coordinate(objA, state);
+    //         let numOntop = state.stacks[coor.x].length - coor.y - 1;
+    //         return N * numOntop + Math.abs(state.arm-coor.x);
+    //     }
+    //     // THE REST -------------------
+
+    //     if(checkBinaryRelation(lit, state)) return 0; // goal state
+    //     let coorA = coordinate(objA, state);
+    //     let coorB = coordinate(objB, state);
+    //     let nA = state.stacks[coorA.x].length - coorA.y - 1; // # of objs on top A
+    //     let nB = state.stacks[coorB.x].length - coorB.y - 1; // # of objs on top B
+    //     let dR = Math.min(Math.abs(state.arm-coorA.x), Math.abs(state.arm-coorB.x));
+    //     let h = Math.abs(coorA.x-coorB.x) + dR;
+
+    //     if(memberOf(lit.relation, ["leftof","rightof","beside"])) {
+    //         return N * Math.min(nA,nB) + h;
+    //     }
+    //     if(lit.relation == "above") {
+    //         return N * nA + h;
+    //     }
+    //     if(lit.relation == "under") {
+    //         return N * nB + h;
+    //     }
+    //     if(memberOf(lit.relation, ["ontop","inside"])) {
+    //         if(coorA.x == coorB.x) return N * Math.max(nA,nB) + h;
+    //         return N * (nA + nB) + h;
+    //     }
+    //     return 0;
+    // }
 }
 
-// ===============================================================================================
-// ===============================================================================================
-// ===============================================================================================
-
-class Planner {
-    constructor(private world : WorldState) {}
-    /** 
-     * The core planner method.
-     * @param interpretation: The logical interpretation of the user's desired goal. 
-     * @returns: A plan, represented by a list of strings.
-     *           If there's a planning error, it throws an error with a string description.
-     */
-    makePlan(intp : DNFFormula) : string[] {
-        let start : ShrdliteNode = new ShrdliteNode(this.world);
-        let result = aStarSearch(new ShrdliteGraph(), start, goalTest(intp), heuristics(intp), 10);
-        if(result.status == "timeout")
-            throw `TIMEOUT! Visited ${result.visited} nodes`;
-        if(result.status == "failure")
-            throw `No path exists from start to goal`;
-        return result.path.map((incomingEdge) => incomingEdge.action);
-    }
-}
-
-// TODO: Throw errors in plannner at appropriae places!
 // TODO: Test timeout "medium" "put the brick that is to the left of a pyramid in a box"
-// TODO: Interpreter fails "complex" "put any object under all tables"
 // TODO: Ambiguity resolution in Shrdlite.ts
+// TODO: For A*, is our implementation a tree search or graph search?
+// TODO: Test the impossible world as well!
 // leftof, rightof, inside, ontop, under, beside, above, HOLDING
