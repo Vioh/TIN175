@@ -385,9 +385,4 @@ function heuristics(intp : DNFFormula) : (node : ShrdliteNode) => number {
     }
 }
 
-// TODO: Failed => (medium) put a pyramid under a ball
-// TODO: Test timeout "medium" "put the brick that is to the left of a pyramid in a box"
-// TODO: Last one in the complex world
-// TODO: Ambiguity resolution in Shrdlite.ts
-// TODO: For A*, is our implementation a tree search or graph search?
-// TODO: Test the impossible world as well!
+// TODO: Documentation for heuristics function (symbols + explanations)
