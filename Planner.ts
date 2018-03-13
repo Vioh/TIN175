@@ -6,7 +6,7 @@ into a state compatible with the user's command, i.e. to achieve what the user w
 ********************************************************************************/
 import {WorldState} from "./World";
 import {Successor, Graph, SearchResult} from "./Graph";
-import {aStarSearch} from "./AStarSearch";
+import {anytimeAStarSearch} from "./AStarSearch";
 import {ShrdliteResult, DNFFormula, Conjunction, Literal, SimpleObject} from "./Types";
 
 /** 
@@ -48,7 +48,7 @@ export function plan(interpretations : ShrdliteResult[], world : WorldState) : S
  */
 function makePlan(intp : DNFFormula, world : WorldState) : string[] {
     let start : ShrdliteNode = new ShrdliteNode(world);
-    let result = aStarSearch(new ShrdliteGraph(), start, goalTest(intp), heuristics(intp), 15);
+    let result = anytimeAStarSearch(new ShrdliteGraph(), start, goalTest(intp), heuristics(intp), 10);
     if(result.status == "timeout")
         throw `TIMEOUT! Visited ${result.visited} nodes`;
     if(result.status == "failure")
