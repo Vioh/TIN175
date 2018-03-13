@@ -48,7 +48,7 @@ export function plan(interpretations : ShrdliteResult[], world : WorldState) : S
  */
 function makePlan(intp : DNFFormula, world : WorldState) : string[] {
     let start : ShrdliteNode = new ShrdliteNode(world);
-    let result = anytimeAStarSearch(new ShrdliteGraph(), start, goalTest(intp), heuristics(intp), 10);
+    let result = anytimeAStarSearch(new ShrdliteGraph(), start, goalTest(intp), heuristics(intp), 15);
     if(result.status == "timeout")
         throw `TIMEOUT! Visited ${result.visited} nodes`;
     if(result.status == "failure")
