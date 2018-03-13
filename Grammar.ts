@@ -1,6 +1,8 @@
-// Generated automatically by nearley
+// Generated automatically by nearley, version 2.13.0
 // http://github.com/Hardmath123/nearley
-function id(d:any[]):any {return d[0];}
+// Bypasses TS6133. Allow declared but unused functions.
+// @ts-ignore
+function id(d: any[]): any { return d[0]; }
 
 import {
     Command, TakeCommand, DropCommand, MoveCommand,
@@ -10,14 +12,30 @@ import {
     WhereisCommand,
     */
     Location, Entity,
-    Object, RelativeObject, SimpleObject,
+    Object, RelativeObject, SimpleObject, ComplexObject
 } from "./Types";
-export interface Token {value:any; [key: string]:any};
-export interface Lexer {reset:(chunk:string, info:any) => void; next:() => Token | undefined; save:() => any; formatError:(token:Token) => string; has:(tokenType:string) => boolean};
-export interface NearleyRule {name:string; symbols:NearleySymbol[]; postprocess?:(d:any[],loc?:number,reject?:{})=>any};
-export type NearleySymbol = string | {literal:any} | {test:(token:any) => boolean};
-export var Lexer:Lexer|undefined = undefined;
-export var ParserRules:NearleyRule[] = [
+
+export interface Token { value: any; [key: string]: any };
+
+export interface Lexer {
+  reset: (chunk: string, info: any) => void;
+  next: () => Token | undefined;
+  save: () => any;
+  formatError: (token: Token) => string;
+  has: (tokenType: string) => boolean
+};
+
+export interface NearleyRule {
+  name: string;
+  symbols: NearleySymbol[];
+  postprocess?: (d: any[], loc?: number, reject?: {}) => any
+};
+
+export type NearleySymbol = string | { literal: any } | { test: (token: any) => boolean };
+
+export var Lexer: Lexer | undefined = undefined;
+
+export var ParserRules: NearleyRule[] = [
     {"name": "main$ebnf$1", "symbols": ["will_you"], "postprocess": id},
     {"name": "main$ebnf$1", "symbols": [], "postprocess": () => null},
     {"name": "main$ebnf$2", "symbols": ["please"], "postprocess": id},
@@ -50,6 +68,16 @@ export var ParserRules:NearleyRule[] = [
     {"name": "objectPL$ebnf$3", "symbols": ["color"], "postprocess": id},
     {"name": "objectPL$ebnf$3", "symbols": [], "postprocess": () => null},
     {"name": "objectPL", "symbols": ["objectPL$ebnf$2", "objectPL$ebnf$3", "formPL"], "postprocess": (d) => new SimpleObject(d[2], d[0], d[1])},
+    {"name": "objectSG$string$1", "symbols": [{"literal":"o"}, {"literal":"r"}], "postprocess": (d) => d.join('')},
+    {"name": "objectSG", "symbols": ["objectSG", "objectSG$string$1", "objectSG"], "postprocess": (d) => new ComplexObject(d[0], d[2], d[1])},
+    {"name": "objectPL$string$1", "symbols": [{"literal":"o"}, {"literal":"r"}], "postprocess": (d) => d.join('')},
+    {"name": "objectPL", "symbols": ["objectPL", "objectPL$string$1", "objectPL"], "postprocess": (d) => new ComplexObject(d[0], d[2], d[1])},
+    {"name": "objectPL$string$2", "symbols": [{"literal":"e"}, {"literal":"x"}, {"literal":"c"}, {"literal":"e"}, {"literal":"p"}, {"literal":"t"}], "postprocess": (d) => d.join('')},
+    {"name": "objectPL", "symbols": ["objectPL", "objectPL$string$2", "objectPL"], "postprocess": (d) => new ComplexObject(d[0], d[2], d[1])},
+    {"name": "objectPL$string$3", "symbols": [{"literal":"e"}, {"literal":"x"}, {"literal":"c"}, {"literal":"e"}, {"literal":"p"}, {"literal":"t"}], "postprocess": (d) => d.join('')},
+    {"name": "objectPL", "symbols": ["objectPL", "objectPL$string$3", "objectSG"], "postprocess": (d) => new ComplexObject(d[0], d[2], d[1])},
+    {"name": "objectSG$string$2", "symbols": [{"literal":"e"}, {"literal":"x"}, {"literal":"c"}, {"literal":"e"}, {"literal":"p"}, {"literal":"t"}], "postprocess": (d) => d.join('')},
+    {"name": "objectSG", "symbols": ["objectSG", "objectSG$string$2", "objectSG"], "postprocess": (d) => new ComplexObject(d[0], d[2], d[1])},
     {"name": "quantifierSG$subexpression$1$string$1", "symbols": [{"literal":"a"}, {"literal":"n"}, {"literal":"y"}], "postprocess": (d) => d.join('')},
     {"name": "quantifierSG$subexpression$1", "symbols": ["quantifierSG$subexpression$1$string$1"]},
     {"name": "quantifierSG$subexpression$1$string$2", "symbols": [{"literal":"a"}, {"literal":"n"}], "postprocess": (d) => d.join('')},
@@ -185,4 +213,5 @@ export var ParserRules:NearleyRule[] = [
     {"name": "please$string$1", "symbols": [{"literal":"p"}, {"literal":"l"}, {"literal":"e"}, {"literal":"a"}, {"literal":"s"}, {"literal":"e"}], "postprocess": (d) => d.join('')},
     {"name": "please", "symbols": ["please$string$1"]}
 ];
-export var ParserStart:string = "main";
+
+export var ParserStart: string = "main";
