@@ -32,14 +32,14 @@ export interface CompareFunction<T> {
 }
 
 
-// The class for search results: this is what the function 'aStarSearch' should return
+// The class for search results: this is what the function 'anytimeAStarSearch' should return
 // If the search fails: 'status' should be 'failure' or 'timeout'; 'path' should be [] and 'cost' should be negative
 // If the search succeeds: 'status' should be 'success'; 'path' should include the goal node, but not the start node
 // Note: 'visited' should count all nodes that have been added to the frontier, not only the size of the frontier at return time
 
 export class SearchResult<Node> {
     constructor(
-        public status  : 'success' | 'failure' | 'timeout',
+        public status  : 'success' | 'failure' | 'timeout' | 'unknown',
         public path    : Successor<Node>[], // the path found by the search algorithm
         public cost    : number,            // the total cost of the path
         public visited : number,            // the total number of nodes that have been added to the frontier
