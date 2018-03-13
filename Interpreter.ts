@@ -24,7 +24,7 @@ import {
     ShrdliteResult,
     Command, TakeCommand, DropCommand, MoveCommand,
     Location, Entity,
-    Object, RelativeObject, SimpleObject,
+    Object, RelativeObject, SimpleObject, ComplexObject,
     DNFFormula, Conjunction, Literal,
 } from "./Types";
 
@@ -62,7 +62,7 @@ export function interpret(parses: ShrdliteResult[], world: WorldState): Shrdlite
             continue;
         }
         result.interpretation = intp;
-        interpretations.push(result);
+        interpretations.push(result);     
     };
     if (interpretations.length == 0) {
         // merge all errors into one
@@ -263,8 +263,21 @@ class Interpreter {
     /** Returns an interpretation for an object. */
     interpretObject(obj : Object) : ObjectSemantics {
         if(obj instanceof SimpleObject) return this.interpretSimpleObject(obj);
-        if(obj instanceof RelativeObject) return this.interpretRelativeObject(obj);
+        if (obj instanceof RelativeObject) return this.interpretRelativeObject(obj);
+        if (obj instanceof ComplexObject) return this.interpretComplexObject(obj);
         throw "Unknown object";
+    }
+
+    interpretComplexObject(obj: ComplexObject): ObjectSemantics {
+        let objectsA: ObjectSemantics = this.interpretObject(obj.object1);
+        let objectsB: ObjectSemantics = this.interpretObject(obj.object2);
+        let objects: string[] = objectsA.concat(objectsB);
+        if (obj.operator == "or") 
+            return objects.filter(function (item, pos) { return objects.indexOf(item) == pos });
+        if (obj.operator == "except") {
+            return objectsA.filter(function (item) { return objectsB.indexOf(item) < 0 });
+        }
+        return [];
     }
 
     /** Returns an interpretation for a simple object. */
