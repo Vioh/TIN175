@@ -242,14 +242,14 @@ class Interpreter {
         if(memberOf(a.form, ["pyramid","plank","box"]) && b.form == "box" && rel == "inside")
             if(a.size == b.size) return {error: `A ${a.form} cannot be inside a box of the same size`};
 
-        if(a.form == "box" && memberOf(b.form, ["pyramid","brick"]) && rel == "ontop")
+        if(a.form == "box" && memberOf(b.form, ["pyramid","brick"]) && rel == "ontop") {
             // Small boxes cannot be supported by small bricks or pyramids.
             if(a.size == "small" && b.size == "small")
                 return {error: `A small box cannot be ontop a small ${b.form}`};
             // Large boxes cannot be supported by large pyramids.
             if(a.size == "large" && b.size == "large" && b.form == "pyramid")
                 return {error: `A large box cannot be ontop a large pyramid`};
-
+        }
         // Small objects cannot support large objects. 
         if(memberOf(rel, ["inside","ontop"]) && a.size == "large" && b.size == "small")
             return {error: `A large object cannot be ${rel} a small one`};
