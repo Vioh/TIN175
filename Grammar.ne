@@ -18,7 +18,7 @@ import {
     WhereisCommand,
     */
     Location, Entity,
-    Object, RelativeObject, SimpleObject,
+    Object, RelativeObject, SimpleObject, ComplexObject
 } from "./Types";
 %}
 
@@ -46,6 +46,13 @@ objectPL --> objectPL that_are:? location  {% (d) => new RelativeObject(d[0], d[
 
 objectSG --> size:? color:? formSG  {% (d) => new SimpleObject(d[2], d[0], d[1]) %}
 objectPL --> size:? color:? formPL  {% (d) => new SimpleObject(d[2], d[0], d[1]) %}
+
+objectSG --> objectSG "or" objectSG {% (d) => new ComplexObject(d[0], d[2], d[1]) %}
+objectPL --> objectPL "or" objectPL {% (d) => new ComplexObject(d[0], d[2], d[1]) %}
+objectPL --> objectPL "except" objectPL {% (d) => new ComplexObject(d[0], d[2], d[1]) %}
+objectPL --> objectPL "except" objectSG {% (d) => new ComplexObject(d[0], d[2], d[1]) %}
+objectSG --> objectSG "except" objectSG {% (d) => new ComplexObject(d[0], d[2], d[1]) %}
+
 
 ## Lexical rules
 
