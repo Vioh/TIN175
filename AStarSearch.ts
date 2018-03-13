@@ -134,15 +134,21 @@ export function anytimeAStarSearch<Node>(
             else return new SearchResult<Node>('timeout', [], -1, gcostTable.size());
         }
         eps = eps - 0.5;
+        var items: SearchNode[] = [];
         incons.forEach(function (searchnode) {
-            frontier.enqueue(searchnode);
+            var graphnode: Node = (searchnode.edge) ? searchnode.edge.child : start;
+            searchnode.astarcost = fvalue(graphnode);
+            items.push(searchnode);
         });
         frontier.forEach(function (searchnode) {
             var graphnode: Node = (searchnode.edge) ? searchnode.edge.child : start;
             searchnode.astarcost = fvalue(graphnode);
+            items.push(searchnode);
         });
+        frontier.clear();
+        items.forEach(function (searchnode) { frontier.enqueue(searchnode); });
         incons.clear();
-        refresh();
+        //refresh();
         closed.clear();
         improvePath();
     }
