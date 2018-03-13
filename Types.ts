@@ -80,7 +80,15 @@ export class Entity {
 }
 
 
-export type Object = RelativeObject | SimpleObject;
+export type Object = RelativeObject | SimpleObject | ComplexObject;
+
+export class ComplexObject {
+    constructor(public object1: Object,
+        public object2: Object,
+        public operator: string,) { }
+    toString(): string { return `ComplexObject(${this.object1.toString()}, ${this.object2}, ${this.operator.toString()})` };
+    clone(): ComplexObject { return new ComplexObject(this.object1.clone(), this.object2, this.operator) };
+}
 
 export class RelativeObject {
     constructor(public object : Object,
