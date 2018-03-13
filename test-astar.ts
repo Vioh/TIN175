@@ -1,7 +1,7 @@
 ///<reference path="lib/node.d.ts"/>
 
 import {Successor, Graph, SearchResult} from "./Graph";
-import {aStarSearch} from "./AStarSearch";
+import {anytimeAStarSearch} from "./AStarSearch";
 import {Coordinate, GridNode, GridGraph} from "./GridGraph";
 import {TestCase, testCases} from "./AStarTestCases";
 
@@ -98,7 +98,7 @@ function runTest(testcase: TestCase, useHeuristics: boolean) : TestResult {
 
     heuristicsCtr = 0;
     var startTime = Date.now();
-    var result : SearchResult<GridNode> = aStarSearch(graph, startnode, isgoal, h, AStarTimeout);
+    var result: SearchResult<GridNode> = anytimeAStarSearch(graph, startnode, isgoal, h, AStarTimeout);
     var returnvalue : TestResult =
         {failed:1, time:Date.now()-startTime, nodes:result.visited, calls:heuristicsCtr};
     if (result.status !== 'success') {
